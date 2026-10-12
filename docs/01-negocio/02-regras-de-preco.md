@@ -173,6 +173,28 @@ O campo `tarifa` assume `FERIADO | TEMPORADA | FIM_DE_SEMANA | BASE`, e quando f
 `FERIADO` ou `TEMPORADA` inclui também `periodoNome` — é o que explica ao hóspede
 por que a noite custou mais.
 
+### Linha de desconto
+
+Quando `descontoCentavos > 0`, o detalhamento recebe uma linha
+`{ "tipo": "DESCONTO", "rotulo": "Desconto", "valorCentavos": -<desconto> }`, com valor
+**negativo**.
+
+Isso não é um enfeite: sem ela a invariante da RN7 (soma do detalhamento = total)
+**quebraria** sempre que o administrador registrasse um desconto, porque o desconto
+entra no total e não apareceria em nenhuma linha. A cotação pública nunca tem desconto,
+então a linha só existe nos fluxos de admin (Fase 3).
+
+### Linhas de valor zero são omitidas
+
+`HOSPEDE_EXTRA` e `TAXA_LIMPEZA` só entram no detalhamento quando o valor é maior que
+zero — exibir "R$ 0,00" é ruído, como já previa
+[UC-P03](../02-casos-de-uso/publico/UC-P03-simular-preco.md) (A7) para o hóspede extra.
+A mesma regra vale para a taxa de limpeza de uma casa que não cobra limpeza.
+
+Consequência: a propriedade "todo detalhamento tem ao menos 2 linhas" vale quando a
+taxa de limpeza é positiva, que é o caso de toda configuração real. Com taxa zero e uma
+noite, o detalhamento tem uma linha só.
+
 ## Arredondamento
 
 Como tudo é inteiro em centavos e não há percentuais na cotação pública, **não há

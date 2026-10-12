@@ -235,11 +235,11 @@ describe("diaDaSemana", () => {
     expect(nomes).toEqual([
       "Domingo",
       "Segunda-feira",
-      "Terca-feira",
+      "Terça-feira",
       "Quarta-feira",
       "Quinta-feira",
       "Sexta-feira",
-      "Sabado",
+      "Sábado",
     ]);
   });
 });

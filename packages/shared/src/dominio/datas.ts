@@ -1,21 +1,21 @@
 /**
- * Aritmetica de datas de estadia.
+ * Aritmética de datas de estadia.
  *
- * Este modulo e a base de todo o resto do sistema: preco, disponibilidade, iCal e
- * e-mails dependem dele. Erros de data sao os mais sorrateiros do projeto, por isso
- * tres decisoes sao explicitas aqui:
+ * Este módulo é a base de todo o resto do sistema: preço, disponibilidade, iCal e
+ * e-mails dependem dele. Erros de data são os mais sorrateiros do projeto, por isso
+ * três decisões são explícitas aqui:
  *
- * 1. Uma data de estadia e uma string `YYYY-MM-DD`, nunca um `Date`. `Date` carrega
- *    hora e fuso, e os dois sao fonte de bug quando so interessa o dia.
- * 2. Toda a aritmetica roda em UTC, sobre o dia. Fuso horario entra em um unico
+ * 1. Uma data de estadia é uma string `YYYY-MM-DD`, nunca um `Date`. `Date` carrega
+ *    hora e fuso, e os dois são fonte de bug quando só interessa o dia.
+ * 2. Toda a aritmética roda em UTC, sobre o dia. Fuso horário entra em um único
  *    ponto: `hojeEmSaoPaulo`, que traduz um instante real para o dia local.
- * 3. Nada de I/O e nada de `Date.now()`. O instante atual sempre entra por parametro,
- *    o que mantem o modulo puro e os testes deterministicos.
+ * 3. Nada de I/O e nada de `Date.now()`. O instante atual sempre entra por parâmetro,
+ *    o que mantém o módulo puro e os testes determinísticos.
  *
- * Tres convencoes de intervalo coexistem no sistema, e confundi-las desloca tudo em
- * um dia. Cada uma tem sua propria funcao, de proposito:
+ * Três convenções de intervalo coexistem no sistema, e confundi-las desloca tudo em
+ * um dia. Cada uma tem sua própria função, de propósito:
  *
- * | Convencao                       | Funcao                        | 10 a 15 da |
+ * | Convenção                       | Função                        | 10 a 15 dá |
  * |---------------------------------|-------------------------------|------------|
  * | Estadia `[checkin, checkout)`   | `noitesDe`                    | 5 noites   |
  * | Bloqueio/temporada `[ini, fim]` | `noitesDePeriodoInclusivo`    | 6 noites   |
@@ -25,14 +25,14 @@
  * docs/00-visao-geral/03-glossario.md.
  */
 
-/** Fuso de referencia para tudo que envolve "hoje". */
+/** Fuso de referência para tudo que envolve "hoje". */
 export const FUSO_HORARIO = "America/Sao_Paulo";
 
 /**
  * Data de estadia no formato `YYYY-MM-DD`.
  *
- * E um alias de `string`, nao um tipo nominal: o ganho real vem de validar na
- * fronteira (`validarData`) e nao de enganar o compilador.
+ * É um alias de `string`, não um tipo nominal: o ganho real vem de validar na
+ * fronteira (`validarData`) e não de enganar o compilador.
  */
 export type DataISO = string;
 
@@ -44,45 +44,45 @@ export type DiaDaSemana = (typeof DIAS_DA_SEMANA)[number];
 const NOME_DO_DIA: Record<DiaDaSemana, string> = {
   DOM: "Domingo",
   SEG: "Segunda-feira",
-  TER: "Terca-feira",
+  TER: "Terça-feira",
   QUA: "Quarta-feira",
   QUI: "Quinta-feira",
   SEX: "Sexta-feira",
-  SAB: "Sabado",
+  SAB: "Sábado",
 };
 
 const FORMATO_DATA_ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MS_POR_DIA = 86_400_000;
 
-/** Limite tecnico do intervalo que o sistema aceita manipular, em dias. */
+/** Limite técnico do intervalo que o sistema aceita manipular, em dias. */
 const MAX_DIAS_POR_INTERVALO = 400;
 
-/** Data `YYYY-MM-DD` ausente, malformada ou inexistente no calendario. */
+/** Data `YYYY-MM-DD` ausente, malformada ou inexistente no calendário. */
 export class DataInvalidaError extends Error {
   readonly codigo = "DATA_INVALIDA";
   readonly campo: string;
 
   constructor(valor: unknown, campo = "data") {
-    super(`${campo}: "${String(valor)}" nao e uma data valida no formato YYYY-MM-DD`);
+    super(`${campo}: "${String(valor)}" não é uma data válida no formato YYYY-MM-DD`);
     this.name = "DataInvalidaError";
     this.campo = campo;
   }
 }
 
-/** Intervalo em que o fim vem antes do inicio. */
+/** Intervalo em que o fim vem antes do início. */
 export class IntervaloInvalidoError extends Error {
   readonly codigo = "INTERVALO_INVALIDO";
 
   constructor(inicio: DataISO, fim: DataISO) {
-    super(`intervalo invalido: "${fim}" vem antes de "${inicio}"`);
+    super(`intervalo inválido: "${fim}" vem antes de "${inicio}"`);
     this.name = "IntervaloInvalidoError";
   }
 }
 
 /**
- * Verifica se o valor e uma data `YYYY-MM-DD` que existe no calendario.
+ * Verifica se o valor é uma data `YYYY-MM-DD` que existe no calendário.
  *
- * Rejeita `2026-02-30` em vez de aceitar e virar 01/03 silenciosamente, que e o
+ * Rejeita `2026-02-30` em vez de aceitar e virar 02/03 silenciosamente, que é o
  * comportamento do construtor `Date`.
  */
 export function ehDataValida(valor: unknown): valor is DataISO {
@@ -97,7 +97,7 @@ export function ehDataValida(valor: unknown): valor is DataISO {
 
   if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return false;
 
-  // Ida e volta pelo UTC: se o dia nao existe no mes, o Date normaliza e os
+  // Ida e volta pelo UTC: se o dia não existe no mês, o Date normaliza e os
   // componentes deixam de casar.
   const instante = new Date(Date.UTC(ano, mes - 1, dia));
   return (
@@ -107,7 +107,7 @@ export function ehDataValida(valor: unknown): valor is DataISO {
   );
 }
 
-/** Valida e devolve a data, ou lanca `DataInvalidaError`. Use na fronteira. */
+/** Valida e devolve a data, ou lança `DataInvalidaError`. Use na fronteira. */
 export function validarData(valor: unknown, campo = "data"): DataISO {
   if (!ehDataValida(valor)) throw new DataInvalidaError(valor, campo);
   return valor;
@@ -116,7 +116,7 @@ export function validarData(valor: unknown, campo = "data"): DataISO {
 /** Converte uma data validada em epoch (ms) da meia-noite UTC daquele dia. */
 function paraEpoch(data: DataISO, campo = "data"): number {
   const partes = FORMATO_DATA_ISO.exec(validarData(data, campo));
-  // `validarData` garante o casamento; o non-null aqui e so para o compilador.
+  // `validarData` garante o casamento; a asserção aqui é só para o compilador.
   const [, ano, mes, dia] = partes as RegExpExecArray;
   return Date.UTC(Number(ano), Number(mes) - 1, Number(dia));
 }
@@ -135,11 +135,11 @@ export function somarDias(data: DataISO, dias: number): DataISO {
 }
 
 /**
- * Soma (ou subtrai) meses de calendario a uma data.
+ * Soma (ou subtrai) meses de calendário a uma data.
  *
- * Usado na janela de reserva ("hoje + 12 meses"). Quando o dia nao existe no mes
- * destino, trunca para o ultimo dia dele: `2026-01-31 + 1 mes` = `2026-02-28`.
- * Truncar e o que o usuario espera de "um mes depois"; estourar para 03/03 nao e.
+ * Usado na janela de reserva ("hoje + 12 meses"). Quando o dia não existe no mês
+ * destino, trunca para o último dia dele: `2026-01-31 + 1 mês` = `2026-02-28`.
+ * Truncar é o que o usuário espera de "um mês depois"; estourar para 03/03 não é.
  */
 export function somarMeses(data: DataISO, meses: number): DataISO {
   if (!Number.isInteger(meses)) {
@@ -147,12 +147,10 @@ export function somarMeses(data: DataISO, meses: number): DataISO {
   }
 
   const instante = new Date(paraEpoch(data));
-  const ano = instante.getUTCFullYear();
-  const mes = instante.getUTCMonth();
   const dia = instante.getUTCDate();
 
-  const alvo = new Date(Date.UTC(ano, mes + meses, 1));
-  // Dia 0 do mes seguinte = ultimo dia do mes alvo.
+  const alvo = new Date(Date.UTC(instante.getUTCFullYear(), instante.getUTCMonth() + meses, 1));
+  // Dia 0 do mês seguinte = último dia do mês alvo.
   const ultimoDiaDoMesAlvo = new Date(
     Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0),
   ).getUTCDate();
@@ -163,11 +161,11 @@ export function somarMeses(data: DataISO, meses: number): DataISO {
 }
 
 /**
- * Numero de dias de `de` ate `ate`. Negativo se `ate` vier antes.
+ * Número de dias de `de` até `ate`. Negativo se `ate` vier antes.
  *
- * Imune a horario de verao porque conta sobre a meia-noite UTC de cada dia, nao
- * sobre a duracao real do dia local. O Brasil nao usa horario de verao hoje, mas
- * ja usou e pode voltar a usar.
+ * Imune a horário de verão porque conta sobre a meia-noite UTC de cada dia, não
+ * sobre a duração real do dia local. O Brasil não usa horário de verão hoje, mas
+ * já usou e pode voltar a usar.
  */
 export function diferencaEmDias(de: DataISO, ate: DataISO): number {
   return Math.round((paraEpoch(ate, "ate") - paraEpoch(de, "de")) / MS_POR_DIA);
@@ -184,9 +182,9 @@ export function compararDatas(a: DataISO, b: DataISO): -1 | 0 | 1 {
 /**
  * Noites ocupadas por uma estadia: `[checkin, checkout)`.
  *
- * O dia do check-out **nao** e ocupado — e o que permite a troca de hospede no mesmo
+ * O dia do check-out **não** é ocupado — é o que permite a troca de hóspede no mesmo
  * dia (R1). Check-in igual a check-out devolve lista vazia; check-out antes do
- * check-in lanca erro, porque e sempre bug de quem chamou.
+ * check-in lança erro, porque é sempre bug de quem chamou.
  */
 export function noitesDe(checkin: DataISO, checkout: DataISO): DataISO[] {
   const dias = diferencaEmDias(
@@ -198,10 +196,10 @@ export function noitesDe(checkin: DataISO, checkout: DataISO): DataISO[] {
 }
 
 /**
- * Noites de um periodo com inicio e fim **inclusivos**.
+ * Noites de um período com início e fim **inclusivos**.
  *
- * Convencao de bloqueio, temporada e feriado: "do dia 29 ao dia 2" inclui as duas
- * pontas, porque e assim que o administrador pensa.
+ * Convenção de bloqueio, temporada e feriado: "do dia 29 ao dia 2" inclui as duas
+ * pontas, porque é assim que o administrador pensa.
  */
 export function noitesDePeriodoInclusivo(inicio: DataISO, fim: DataISO): DataISO[] {
   const dias = diferencaEmDias(validarData(inicio, "inicio"), validarData(fim, "fim"));
@@ -212,7 +210,7 @@ export function noitesDePeriodoInclusivo(inicio: DataISO, fim: DataISO): DataISO
 function gerarDias(inicio: DataISO, quantidade: number): DataISO[] {
   if (quantidade > MAX_DIAS_POR_INTERVALO) {
     throw new RangeError(
-      `intervalo de ${quantidade} dias excede o limite tecnico de ${MAX_DIAS_POR_INTERVALO}`,
+      `intervalo de ${quantidade} dias excede o limite técnico de ${MAX_DIAS_POR_INTERVALO}`,
     );
   }
 
@@ -227,27 +225,27 @@ function gerarDias(inicio: DataISO, quantidade: number): DataISO[] {
 /**
  * `DTEND` do `VEVENT` que representa uma estadia.
  *
- * O iCal usa fim **exclusivo** em eventos de dia inteiro, a mesma convencao do
- * check-out — logo o valor e o proprio check-out. A funcao existe para que o
- * ponto de uso declare qual convencao esta aplicando: a identidade aqui e o
- * resultado da regra, nao coincidencia.
+ * O iCal usa fim **exclusivo** em eventos de dia inteiro, a mesma convenção do
+ * check-out — logo o valor é o próprio check-out. A função existe para que o
+ * ponto de uso declare qual convenção está aplicando: a identidade aqui é o
+ * resultado da regra, não coincidência.
  */
 export function dtEndDeCheckout(checkout: DataISO): DataISO {
   return validarData(checkout, "checkout");
 }
 
-/** Dia da semana da data, no codigo usado por `diasFimDeSemana`. */
+/** Dia da semana da data, no código usado por `diasFimDeSemana`. */
 export function diaDaSemana(data: DataISO): DiaDaSemana {
   const indice = new Date(paraEpoch(data)).getUTCDay();
   return DIAS_DA_SEMANA[indice] as DiaDaSemana;
 }
 
-/** Nome do dia da semana em pt-BR, como aparece no detalhamento da cotacao. */
+/** Nome do dia da semana em pt-BR, como aparece no detalhamento da cotação. */
 export function nomeDoDiaDaSemana(data: DataISO): string {
   return NOME_DO_DIA[diaDaSemana(data)];
 }
 
-/** `true` se a data esta em `[inicio, fim]`, com as duas pontas inclusivas. */
+/** `true` se a data está em `[inicio, fim]`, com as duas pontas inclusivas. */
 export function estaNoIntervaloInclusivo(
   data: DataISO,
   inicio: DataISO,
@@ -267,21 +265,21 @@ const FORMATADOR_DIA_LOCAL = new Intl.DateTimeFormat("en-CA", {
 /**
  * O dia corrente em `America/Sao_Paulo` para um instante real.
  *
- * Unico ponto do modulo que conhece fuso. Em UTC as 02:30 ja e o dia seguinte no
+ * Único ponto do módulo que conhece fuso. Em UTC as 02:30 já é o dia seguinte no
  * Brasil, e usar a data de UTC desloca toda a disponibilidade em um dia perto da
- * meia-noite. O instante entra por parametro para manter a funcao pura.
+ * meia-noite. O instante entra por parâmetro para manter a função pura.
  */
 export function hojeEmSaoPaulo(agora: Date): DataISO {
   if (!(agora instanceof Date) || Number.isNaN(agora.getTime())) {
-    throw new TypeError("agora deve ser um Date valido");
+    throw new TypeError("agora deve ser um Date válido");
   }
 
   const partes: Record<string, string | undefined> = Object.fromEntries(
     FORMATADOR_DIA_LOCAL.formatToParts(agora).map((parte) => [parte.type, parte.value]),
   );
 
-  // Valida a montagem em vez de assumir que o Intl devolveu as tres partes: se a
-  // plataforma mudar o formato, falha aqui e nao em uma data errada la na frente.
+  // Valida a montagem em vez de assumir que o Intl devolveu as três partes: se a
+  // plataforma mudar o formato, falha aqui e não em uma data errada lá na frente.
   return validarData(`${partes.year}-${partes.month}-${partes.day}`, "hoje");
 }
 
