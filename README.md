@@ -36,8 +36,18 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 
 ## Status
 
-**Fase atual: documentação.** Nenhum código implementado ainda.
-Veja o [plano de fases](./docs/06-planejamento/01-fases-e-criterios-de-aceite.md).
+**Fase atual: 0 — Fundação.** Veja o
+[plano de fases](./docs/06-planejamento/01-fases-e-criterios-de-aceite.md).
+
+| Entrega | Situação |
+|---|---|
+| Monorepo com npm workspaces, TypeScript `strict`, Vitest | ✅ |
+| `packages/shared` — aritmética de datas (`dominio/datas.ts`) | ✅ 44 testes, 100% de cobertura |
+| `packages/shared` — tipos, schemas zod, preços, disponibilidade | ⬜ |
+| `backend/`, `infra/`, `site/` | ⬜ |
+
+O CDK ainda não foi iniciado porque depende das pendências
+[8.1 (domínio) e 8.4 (região)](./docs/06-planejamento/02-pendencias-definir.md).
 
 ## Comandos (a implementar na Fase 0)
 
