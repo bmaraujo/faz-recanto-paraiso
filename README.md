@@ -42,8 +42,9 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | Entrega | Situação |
 |---|---|
 | Monorepo com npm workspaces, TypeScript `strict`, Vitest | ✅ |
-| `packages/shared` — aritmética de datas (`dominio/datas.ts`) | ✅ 44 testes, 100% de cobertura |
-| `packages/shared` — tipos, schemas zod, preços, disponibilidade | ⬜ |
+| `packages/shared` — aritmética de datas (`dominio/datas.ts`) | ✅ 44 testes |
+| `packages/shared` — cotação e validação de preços (`dominio/precos.ts`) | ✅ 48 testes (UC-P03) |
+| `packages/shared` — disponibilidade, schemas zod, formatação | ⬜ |
 | `backend/`, `infra/`, `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências
