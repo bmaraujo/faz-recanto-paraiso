@@ -13,14 +13,17 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
+import { configPrecosSchema, type ConfigPrecos } from "@recanto/shared";
+
 const NOME_TABELA_PADRAO = "recanto-paraiso-dev";
 
 /**
  * `DYNAMODB_ENDPOINT` só é definida em teste de integração (DynamoDB Local via
  * Docker — docs/03-tecnico/14-estrategia-de-testes.md). Em produção, o SDK resolve
  * o endpoint real a partir da região do ambiente Lambda.
+ *
+ * Exportado para o teste de integração criar/apagar a tabela (`test/esquema.ts`).
  */
-/** Exportado para o teste de integração criar/apagar a tabela (`test/esquema.ts`). */
 export const clienteDynamoDB = new DynamoDBClient(
   process.env.DYNAMODB_ENDPOINT !== undefined
     ? { endpoint: process.env.DYNAMODB_ENDPOINT }
@@ -68,6 +71,64 @@ export async function obterStatusCasa(casaId: string): Promise<string | undefine
   );
 
   return (resultado.Item as { status?: string } | undefined)?.status;
+}
+
+export function chavePrecos(casaId: string): { PK: string; SK: string } {
+  return { PK: `CASA#${casaId}`, SK: "PRECOS" };
+}
+
+/**
+ * `GetItem CASA#<casaId>/PRECOS` (UC-P03). `undefined` se a casa não tem preços
+ * configurados ainda — E4 do UC-P03, tratado pelo handler como `NAO_ENCONTRADO`.
+ *
+ * Valida a forma do item com `configPrecosSchema` antes de devolver: diferente de
+ * `obterStatusCasa` (um único campo string), este item é uma árvore com temporadas e
+ * feriados, e `calcularCotacao` não tem guarda própria contra formato inesperado —
+ * um item corrompido deve virar `ERRO_INTERNO` limpo no handler, não um erro de
+ * runtime vazando daquela função.
+ */
+export async function obterConfigPrecos(casaId: string): Promise<ConfigPrecos | undefined> {
+  const resultado = await documentoDb.send(
+    new GetCommand({ TableName: nomeTabela(), Key: chavePrecos(casaId) }),
+  );
+  if (resultado.Item === undefined) return undefined;
+
+  const validado = configPrecosSchema.safeParse(resultado.Item);
+  if (!validado.success) {
+    throw new Error(`Item de preços de ${casaId} com formato inválido: ${validado.error.message}`);
+  }
+  return validado.data;
+}
+
+const ANTECEDENCIA_MINIMA_DIAS_PADRAO = 1;
+const JANELA_RESERVA_MESES_PADRAO = 12;
+
+/**
+ * `GetItem CONFIG/GERAL`, projetado às duas únicas chaves que `calcularCotacao`
+ * precisa (UC-P03). Os padrões são os documentados em UC-A13 — `CONFIG/GERAL`
+ * ainda não tem escrita alguma (Fase 2), então na prática todo ambiente novo cai
+ * nestes valores até o admin configurar o contrário.
+ */
+export async function obterConfigGeralCotacao(): Promise<{
+  antecedenciaMinimaDias: number;
+  janelaReservaMeses: number;
+}> {
+  const resultado = await documentoDb.send(
+    new GetCommand({
+      TableName: nomeTabela(),
+      Key: { PK: "CONFIG", SK: "GERAL" },
+      ProjectionExpression: "antecedenciaMinimaDias, janelaReservaMeses",
+    }),
+  );
+
+  const item = resultado.Item as
+    | { antecedenciaMinimaDias?: number; janelaReservaMeses?: number }
+    | undefined;
+
+  return {
+    antecedenciaMinimaDias: item?.antecedenciaMinimaDias ?? ANTECEDENCIA_MINIMA_DIAS_PADRAO,
+    janelaReservaMeses: item?.janelaReservaMeses ?? JANELA_RESERVA_MESES_PADRAO,
+  };
 }
 
 /**

@@ -9,27 +9,42 @@
  * (docs/06-planejamento/01-fases-e-criterios-de-aceite.md):
  *
  * - `GET /api/saude`                      — Fase 0
- * - `GET /api/casas/{id}/disponibilidade` — Fase 1 (esta entrega)
+ * - `GET /api/casas/{id}/disponibilidade` — Fase 1
+ * - `POST /api/cotacao`                   — Fase 1 (esta entrega)
  * - `GET /api/casas`                      — Fase 1, a seguir
  * - `GET /api/casas/{slug}`               — Fase 1
  * - `GET /api/config-publica`             — Fase 1
- * - `POST /api/cotacao`                   — Fase 1
  * - (demais rotas: Fase 2+)
  */
 
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 
-import { formatarInstanteIso } from "../domain/datas";
+import { entradaCotacaoPublicaSchema } from "@recanto/shared";
+
+import { formatarInstanteIso, hojeEmSaoPaulo } from "../domain/datas";
 import {
   ehErroConsultaDisponibilidade,
   listarNoitesOcupadas,
+  noitesOcupadasEm,
   validarIntervaloConsulta,
+  verificarDisponibilidade,
+  type OcupacaoNoite,
 } from "../domain/disponibilidade";
+import { calcularCotacao, ehErroCotacao } from "../domain/precos";
 import { lerConfiguracaoAmbiente } from "../lib/config";
-import { consultarOcupacoes, obterStatusCasa } from "../lib/db";
+import {
+  consultarOcupacoes,
+  obterConfigGeralCotacao,
+  obterConfigPrecos,
+  obterStatusCasa,
+  type ItemOcupacao,
+} from "../lib/db";
 import { respostaErro, respostaJson } from "../lib/http";
 
 const ROTA_DISPONIBILIDADE = /^\/api\/casas\/([^/]+)\/disponibilidade$/;
+
+/** UC-P03: mais restritivo que o limite geral de 16 KB da API pública. */
+const TAMANHO_MAX_CORPO_COTACAO_BYTES = 1024;
 
 export async function handler(
   evento: APIGatewayProxyEventV2,
@@ -47,7 +62,20 @@ export async function handler(
     return respostaDisponibilidade(casaId, evento.queryStringParameters ?? {});
   }
 
+  if (metodo === "POST" && caminho === "/api/cotacao") {
+    return respostaCotacao(evento);
+  }
+
   return respostaErro(404, "NAO_ENCONTRADO", "Rota não encontrada.");
+}
+
+/** Converte os itens crus de `OCUPACAO#` em `OcupacaoNoite` — mesma forma nas duas rotas que leem ocupação. */
+function paraOcupacoesNoite(itens: ItemOcupacao[]): OcupacaoNoite[] {
+  return itens.map((item) => ({
+    data: item.SK.slice("NOITE#".length),
+    pendente: item.pendente,
+    expiraEm: item.expiraEm,
+  }));
 }
 
 /**
@@ -91,18 +119,95 @@ async function respostaDisponibilidade(
   const { de, ate } = intervalo;
   const agora = new Date();
   const ocupacoes = await consultarOcupacoes(casaId, de, ate);
-  const noitesOcupadas = listarNoitesOcupadas(
-    ocupacoes.map((item) => ({
-      data: item.SK.slice("NOITE#".length),
-      pendente: item.pendente,
-      expiraEm: item.expiraEm,
-    })),
-    agora,
-  );
+  const noitesOcupadas = listarNoitesOcupadas(paraOcupacoesNoite(ocupacoes), agora);
 
   return respostaJson(
     200,
     { casaId, de, ate, noitesOcupadas, geradoEm: formatarInstanteIso(agora) },
     { "cache-control": "public, max-age=60" },
   );
+}
+
+/**
+ * `POST /api/cotacao` (UC-P03): recalcula a cotação no servidor e informa se as
+ * datas estão disponíveis. Nunca falha por indisponibilidade — responde `200` com
+ * `disponivel: false` (A6): a tela precisa mostrar o preço e a indisponibilidade
+ * juntos, não um erro.
+ */
+async function respostaCotacao(
+  evento: APIGatewayProxyEventV2,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const corpoBruto = decodificarCorpo(evento);
+  if (corpoBruto === undefined) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Corpo da requisição ausente ou inválido.");
+  }
+  if (Buffer.byteLength(corpoBruto, "utf8") > TAMANHO_MAX_CORPO_COTACAO_BYTES) {
+    return respostaErro(413, "PAYLOAD_MUITO_GRANDE", "Corpo da requisição excede o limite.");
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(corpoBruto);
+  } catch {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Corpo da requisição não é um JSON válido.");
+  }
+
+  const entrada = entradaCotacaoPublicaSchema.safeParse(json);
+  if (!entrada.success) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Dados da cotação inválidos.", {
+      campos: entrada.error.issues.map((problema) => problema.path.join(".")),
+    });
+  }
+  const { casaId, checkin, checkout, hospedes } = entrada.data;
+
+  const status = await obterStatusCasa(casaId);
+  if (status !== "ATIVA") {
+    return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
+  }
+
+  // E4 (UC-P03): casa ativa sem preços configurados é, para o visitante, o mesmo
+  // 404 de casa inexistente — não há cotação possível de qualquer forma.
+  const configPrecos = await obterConfigPrecos(casaId);
+  if (configPrecos === undefined) {
+    return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
+  }
+
+  const agora = new Date();
+  const configGeral = await obterConfigGeralCotacao();
+  const resultado = calcularCotacao(configPrecos, {
+    checkin,
+    checkout,
+    hospedes,
+    hoje: hojeEmSaoPaulo(agora),
+    configGeral,
+    // RN5 (UC-P03): a cotação pública nunca tem desconto manual.
+  });
+
+  if (ehErroCotacao(resultado)) {
+    return respostaErro(422, resultado.erro, resultado.mensagem, resultado.detalhes);
+  }
+
+  const ocupacoes = await consultarOcupacoes(casaId, checkin, checkout);
+  const ocupadas = noitesOcupadasEm(paraOcupacoesNoite(ocupacoes), agora);
+  const disponibilidade = verificarDisponibilidade(ocupadas, checkin, checkout);
+
+  return respostaJson(200, {
+    ...resultado,
+    disponivel: disponibilidade.disponivel,
+    noitesIndisponiveis: disponibilidade.disponivel ? [] : disponibilidade.noitesIndisponiveis,
+    estimativa: true,
+    avisoEstimativa: "Valor estimado. O valor final é confirmado pelo proprietário.",
+  });
+}
+
+/** `undefined` para corpo ausente ou inválido em `isBase64Encoded`. */
+function decodificarCorpo(evento: APIGatewayProxyEventV2): string | undefined {
+  if (evento.body === undefined) return undefined;
+  if (!evento.isBase64Encoded) return evento.body;
+
+  try {
+    return Buffer.from(evento.body, "base64").toString("utf8");
+  } catch {
+    return undefined;
+  }
 }

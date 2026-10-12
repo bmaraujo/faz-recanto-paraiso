@@ -10,8 +10,11 @@
 export {
   ehErroConsultaDisponibilidade,
   listarNoitesOcupadas,
+  noitesOcupadasEm,
   validarIntervaloConsulta,
+  verificarDisponibilidade,
   type ErroConsultaDisponibilidade,
   type IntervaloConsulta,
   type OcupacaoNoite,
+  type ResultadoDisponibilidade,
 } from "@recanto/shared";
