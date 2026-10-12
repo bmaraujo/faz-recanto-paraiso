@@ -1,0 +1,9 @@
+# DynamoDB Local para os testes de integracao do backend
+# (docs/03-tecnico/14-estrategia-de-testes.md). Nao usado em produção - lá é a
+# tabela real, em sa-east-1 (docs/adr/ADR-011-regiao-sa-east-1.md).
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "8000:8000"

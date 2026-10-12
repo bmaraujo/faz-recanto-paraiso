@@ -36,21 +36,23 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 
 ## Status
 
-**Fase atual: 0 — Fundação.** Veja o
+**Fase atual: 1 — Vitrine (iniciada).** Veja o
 [plano de fases](./docs/06-planejamento/01-fases-e-criterios-de-aceite.md).
 
 | Entrega | Situação |
 |---|---|
 | Monorepo com npm workspaces, TypeScript `strict`, Vitest | ✅ |
-| `packages/shared` — aritmética de datas (`dominio/datas.ts`) | ✅ 44 testes |
+| ESLint (`eslint.config.mjs`) — regra de camadas `domain` não importa `lib`/AWS SDK | ✅ |
+| `packages/shared` — aritmética de datas (`dominio/datas.ts`) | ✅ 47 testes |
 | `packages/shared` — cotação e validação de preços (`dominio/precos.ts`) | ✅ 48 testes (UC-P03) |
 | `packages/shared` — disponibilidade (`dominio/disponibilidade.ts`) | ✅ 27 testes (UC-P02) |
 | `packages/shared` — schemas zod de preço, cotação e disponibilidade | ✅ 23 testes |
 | `packages/shared` — Casa (`dominio/casas.ts` + `comodidades.ts` + schema) | ✅ 19 testes (UC-A02, parte pura) |
-| `packages/shared` — formatação de moeda (`dominio/formato.ts`) | ✅ 14 testes (UC-P03) |
+| `packages/shared` — formatação de moeda e instante ISO (`dominio/formato.ts`, `datas.ts`) | ✅ 14 testes (UC-P03) |
 | `packages/shared` — telefone (E.164) e mascaramento de e-mail | ⬜ Fase 2 (UC-A13/UC-P04/UC-P05) |
 | `backend` — workspace, esbuild, `GET /api/saude` | ✅ 6 testes |
-| `backend` — demais rotas de Fase 1, `domain/`, DynamoDB Local | ⬜ |
+| `backend` — `GET /api/casas/{id}/disponibilidade`, `lib/db.ts`, `domain/`, DynamoDB Local | ✅ 7 testes unidade + 5 integração (UC-P02) |
+| `backend` — demais rotas de Fase 1 (`casas`, `config-publica`, `cotacao`) | ⬜ |
 | `infra/`, `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências

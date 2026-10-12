@@ -1,46 +1,18 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { ItemOcupacao } from "../../../src/lib/db";
+import { criarEvento } from "../../evento-teste";
+
+const { obterStatusCasa, consultarOcupacoes } = vi.hoisted(() => ({
+  obterStatusCasa: vi.fn<(casaId: string) => Promise<string | undefined>>(),
+  consultarOcupacoes:
+    vi.fn<(casaId: string, de: string, ate: string) => Promise<ItemOcupacao[]>>(),
+}));
+
+vi.mock("../../../src/lib/db", () => ({ obterStatusCasa, consultarOcupacoes }));
 
 import { handler } from "../../../src/handlers/api-publica";
-
-/**
- * Monta um evento de Function URL (payload v2.0, o mesmo formato de
- * API Gateway HTTP API) com o minimo necessario, sobrescrevendo so o que o teste
- * precisa variar.
- */
-function criarEvento(
-  metodo: string,
-  caminho: string,
-  extras: Partial<APIGatewayProxyEventV2> = {},
-): APIGatewayProxyEventV2 {
-  return {
-    version: "2.0",
-    routeKey: "$default",
-    rawPath: caminho,
-    rawQueryString: "",
-    headers: {},
-    isBase64Encoded: false,
-    requestContext: {
-      accountId: "anonymous",
-      apiId: "teste",
-      domainName: "teste.lambda-url.sa-east-1.on.aws",
-      domainPrefix: "teste",
-      http: {
-        method: metodo,
-        path: caminho,
-        protocol: "HTTP/1.1",
-        sourceIp: "127.0.0.1",
-        userAgent: "vitest",
-      },
-      requestId: "requisicao-de-teste",
-      routeKey: "$default",
-      stage: "$default",
-      time: "12/Oct/2026:12:00:00 +0000",
-      timeEpoch: 1_760_000_000_000,
-    },
-    ...extras,
-  };
-}
 
 describe("GET /api/saude", () => {
   const ENV_ORIGINAL = { ...process.env };
@@ -107,5 +79,107 @@ describe("rota não encontrada", () => {
   it("responde 404 para o método errado na mesma rota", async () => {
     const resposta = await handler(criarEvento("POST", "/api/saude"));
     expect(resposta.statusCode).toBe(404);
+  });
+});
+
+describe("GET /api/casas/{casaId}/disponibilidade", () => {
+  const CASA_ID = "01HQZZZZZZZZZZZZZZZZZZZZZZ";
+
+  beforeEach(() => {
+    obterStatusCasa.mockReset();
+    consultarOcupacoes.mockReset();
+  });
+
+  function evento(
+    casaId: string,
+    query: Record<string, string | undefined>,
+  ): APIGatewayProxyEventV2 {
+    return criarEvento("GET", `/api/casas/${casaId}/disponibilidade`, {
+      queryStringParameters: query,
+    });
+  }
+
+  it("valida de/ate antes de consultar o banco (sem DB em entrada inválida)", async () => {
+    const resposta = await handler(evento(CASA_ID, { de: "2026-11-23", ate: "2026-11-20" }));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(obterStatusCasa).not.toHaveBeenCalled();
+    expect(consultarOcupacoes).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando de/ate estão ausentes", async () => {
+    const resposta = await handler(evento(CASA_ID, {}));
+    expect(resposta.statusCode).toBe(400);
+  });
+
+  it("responde 422 quando o intervalo passa de 13 meses", async () => {
+    const resposta = await handler(evento(CASA_ID, { de: "2026-11-01", ate: "2028-01-01" }));
+
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "INTERVALO_MUITO_LONGO" });
+    expect(obterStatusCasa).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a casa não existe", async () => {
+    obterStatusCasa.mockResolvedValue(undefined);
+
+    const resposta = await handler(evento(CASA_ID, { de: "2026-11-01", ate: "2026-11-30" }));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(consultarOcupacoes).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a casa está RASCUNHO ou INATIVA (não revela o status)", async () => {
+    obterStatusCasa.mockResolvedValue("INATIVA");
+
+    const resposta = await handler(evento(CASA_ID, { de: "2026-11-01", ate: "2026-11-30" }));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(JSON.parse(resposta.body as string)).toEqual({
+      erro: "NAO_ENCONTRADO",
+      mensagem: "Casa não encontrada.",
+      detalhes: {},
+    });
+  });
+
+  it("devolve as noites ocupadas, excluindo pendência vencida (R4)", async () => {
+    obterStatusCasa.mockResolvedValue("ATIVA");
+    consultarOcupacoes.mockResolvedValue([
+      { SK: "NOITE#2026-11-20" },
+      { SK: "NOITE#2026-11-21", pendente: true, expiraEm: "2099-01-01T00:00:00Z" },
+      { SK: "NOITE#2026-11-22", pendente: true, expiraEm: "2000-01-01T00:00:00Z" },
+    ]);
+
+    const resposta = await handler(evento(CASA_ID, { de: "2026-11-01", ate: "2026-11-30" }));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(JSON.parse(resposta.body as string)).toEqual({
+      casaId: CASA_ID,
+      de: "2026-11-01",
+      ate: "2026-11-30",
+      noitesOcupadas: ["2026-11-20", "2026-11-21"],
+      geradoEm: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}-03:00$/) as unknown as string,
+    });
+    expect(consultarOcupacoes).toHaveBeenCalledWith(CASA_ID, "2026-11-01", "2026-11-30");
+  });
+
+  it("não devolve nenhum campo além dos cinco do contrato (R11/RN4)", async () => {
+    obterStatusCasa.mockResolvedValue("ATIVA");
+    consultarOcupacoes.mockResolvedValue([]);
+
+    const resposta = await handler(evento(CASA_ID, { de: "2026-11-01", ate: "2026-11-30" }));
+    const corpo = JSON.parse(resposta.body as string) as Record<string, unknown>;
+
+    expect(Object.keys(corpo).sort()).toEqual(["ate", "casaId", "de", "geradoEm", "noitesOcupadas"]);
+  });
+
+  it("responde com Cache-Control: public, max-age=60 (contrato técnico do UC-P02)", async () => {
+    obterStatusCasa.mockResolvedValue("ATIVA");
+    consultarOcupacoes.mockResolvedValue([]);
+
+    const resposta = await handler(evento(CASA_ID, { de: "2026-11-01", ate: "2026-11-30" }));
+
+    expect(resposta.headers).toMatchObject({ "cache-control": "public, max-age=60" });
   });
 });

@@ -12,6 +12,7 @@ import {
   ehDataValida,
   estaNoIntervaloInclusivo,
   formatarDataPtBr,
+  formatarInstanteIso,
   hojeEmSaoPaulo,
   noitesDe,
   noitesDePeriodoInclusivo,
@@ -283,6 +284,28 @@ describe("formatarDataPtBr", () => {
 
   it("valida antes de formatar", () => {
     expect(() => formatarDataPtBr("20/11/2026")).toThrow(DataInvalidaError);
+  });
+});
+
+describe("formatarInstanteIso", () => {
+  it("usa o offset de America/Sao_Paulo, nao Z", () => {
+    // 21:04 UTC == 18:04 BRT (-03:00)
+    expect(formatarInstanteIso(new Date("2026-10-11T21:04:00Z"))).toBe(
+      "2026-10-11T18:04:00-03:00",
+    );
+  });
+
+  it("vira o dia local corretamente perto da meia-noite", () => {
+    // 02:59:59 UTC == 23:59:59 BRT do dia anterior
+    expect(formatarInstanteIso(new Date("2026-11-20T02:59:59Z"))).toBe(
+      "2026-11-19T23:59:59-03:00",
+    );
+  });
+
+  it("rejeita instante invalido", () => {
+    expect(() => formatarInstanteIso(new Date("nao e data"))).toThrow(TypeError);
+    // @ts-expect-error -- contrato violado de proposito: a fronteira precisa barrar
+    expect(() => formatarInstanteIso("2026-11-20")).toThrow(TypeError);
   });
 });
 
