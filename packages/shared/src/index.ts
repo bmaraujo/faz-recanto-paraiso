@@ -4,6 +4,7 @@ export * from "./dominio/datas";
 export * from "./dominio/precos";
 export * from "./dominio/disponibilidade";
 export * from "./dominio/casas";
+export * from "./dominio/formato";
 export * from "./comodidades";
 export * from "./schemas/comum";
 export * from "./schemas/precos";

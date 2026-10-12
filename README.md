@@ -47,7 +47,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `packages/shared` — disponibilidade (`dominio/disponibilidade.ts`) | ✅ 27 testes (UC-P02) |
 | `packages/shared` — schemas zod de preço, cotação e disponibilidade | ✅ 23 testes |
 | `packages/shared` — Casa (`dominio/casas.ts` + `comodidades.ts` + schema) | ✅ 19 testes (UC-A02, parte pura) |
-| `packages/shared` — formatação (moeda, data, telefone) | ⬜ |
+| `packages/shared` — formatação de moeda (`dominio/formato.ts`) | ✅ 14 testes (UC-P03) |
+| `packages/shared` — telefone (E.164) e mascaramento de e-mail | ⬜ Fase 2 (UC-A13/UC-P04/UC-P05) |
 | `backend/`, `infra/`, `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências
