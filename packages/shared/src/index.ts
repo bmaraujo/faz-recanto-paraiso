@@ -3,3 +3,7 @@
 export * from "./dominio/datas";
 export * from "./dominio/precos";
 export * from "./dominio/disponibilidade";
+export * from "./schemas/comum";
+export * from "./schemas/precos";
+export * from "./schemas/cotacao";
+export * from "./schemas/disponibilidade";

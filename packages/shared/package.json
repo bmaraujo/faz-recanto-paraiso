@@ -13,5 +13,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.6"
   }
 }
