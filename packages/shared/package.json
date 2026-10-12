@@ -5,8 +5,7 @@
   "type": "module",
   "description": "Tipos, schemas e regras de dominio puras compartilhadas entre backend e site",
   "exports": {
-    ".": "./src/index.ts",
-    "./dominio/datas": "./src/dominio/datas.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "test": "vitest run",
@@ -16,5 +15,8 @@
   },
   "dependencies": {
     "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5"
   }
 }

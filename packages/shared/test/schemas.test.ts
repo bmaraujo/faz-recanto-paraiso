@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  alterarStatusCasaSchema,
+  casaEdicaoSchema,
+  casaEntradaSchema,
   configPrecosSchema,
   consultaDisponibilidadeSchema,
   dataISOSchema,
@@ -246,5 +249,215 @@ describe("consultaDisponibilidadeSchema (UC-P02)", () => {
       ate: "2026-11-01",
     });
     expect(resultado.success).toBe(true);
+  });
+});
+
+describe("casaEntradaSchema (UC-A02)", () => {
+  const CASA_VALIDA = {
+    nome: "Casa do Lago",
+    slug: "casa-do-lago",
+    resumo: "Casa de madeira à beira do lago, para até 8 pessoas.",
+    descricao:
+      "## Sobre a casa\n\nUma casa de madeira espaçosa, com varanda de frente para o lago, ideal para famílias.",
+    status: "RASCUNHO",
+    ordem: 10,
+    destaque: false,
+    capacidadeMaxima: 8,
+    hospedesInclusos: 6,
+    quartos: 3,
+    banheiros: 2,
+    camas: [
+      { tipo: "CASAL", quantidade: 1, ambiente: "Suíte" },
+      { tipo: "SOLTEIRO", quantidade: 4, ambiente: "Quarto 2" },
+    ],
+    comodidades: ["LAGO", "PISCINA", "CHURRASQUEIRA", "WIFI"],
+    regras: "- Não são permitidas festas\n- Som até 22h",
+    localizacao: {
+      enderecoPublico: "Zona rural, Município X - UF",
+      enderecoCompleto: "Estrada Y, km 12, Sítio Z",
+      lat: -21.123456,
+      lng: -45.123456,
+      mapaEmbedUrl: "https://www.openstreetmap.org/export/embed.html?bbox=1",
+      comoChegar: "Texto em Markdown...",
+      distancias: [{ referencia: "Centro da cidade", km: 12 }],
+    },
+  };
+
+  it("aceita o corpo de exemplo do contrato técnico", () => {
+    const resultado = casaEntradaSchema.safeParse(CASA_VALIDA);
+    expect(resultado.success).toBe(true);
+  });
+
+  it("aceita sem os campos opcionais de localização e sem regras", () => {
+    const { regras: _r, ...semRegras } = CASA_VALIDA;
+    const minima = {
+      ...semRegras,
+      localizacao: { enderecoPublico: "Zona rural, Município X - UF" },
+    };
+    expect(casaEntradaSchema.safeParse(minima).success).toBe(true);
+  });
+
+  it("4. slug 'Casa Do Lago!' é rejeitado", () => {
+    const resultado = casaEntradaSchema.safeParse({ ...CASA_VALIDA, slug: "Casa Do Lago!" });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("10. hospedesInclusos 10 com capacidade 8 é rejeitado", () => {
+    const resultado = casaEntradaSchema.safeParse({
+      ...CASA_VALIDA,
+      capacidadeMaxima: 8,
+      hospedesInclusos: 10,
+    });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("aceita hospedesInclusos igual à capacidadeMaxima", () => {
+    const resultado = casaEntradaSchema.safeParse({
+      ...CASA_VALIDA,
+      capacidadeMaxima: 8,
+      hospedesInclusos: 8,
+    });
+    expect(resultado.success).toBe(true);
+  });
+
+  it("11. comodidade 'PISCINA_AQUECIDA' (fora da lista) é rejeitada", () => {
+    const resultado = casaEntradaSchema.safeParse({
+      ...CASA_VALIDA,
+      comodidades: ["PISCINA_AQUECIDA"],
+    });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("12. mapaEmbedUrl em http:// é rejeitada", () => {
+    const resultado = casaEntradaSchema.safeParse({
+      ...CASA_VALIDA,
+      localizacao: {
+        ...CASA_VALIDA.localizacao,
+        mapaEmbedUrl: "http://www.openstreetmap.org/embed",
+      },
+    });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("13. mapaEmbedUrl em evil.com é rejeitada", () => {
+    const resultado = casaEntradaSchema.safeParse({
+      ...CASA_VALIDA,
+      localizacao: { ...CASA_VALIDA.localizacao, mapaEmbedUrl: "https://evil.com/mapa" },
+    });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("rejeita nome, resumo e descrição fora da faixa de tamanho", () => {
+    expect(casaEntradaSchema.safeParse({ ...CASA_VALIDA, nome: "Ab" }).success).toBe(false);
+    expect(
+      casaEntradaSchema.safeParse({ ...CASA_VALIDA, resumo: "Curto demais" }).success,
+    ).toBe(false);
+    expect(
+      casaEntradaSchema.safeParse({ ...CASA_VALIDA, descricao: "Muito curta" }).success,
+    ).toBe(false);
+  });
+
+  it("rejeita status fora do enum", () => {
+    expect(
+      casaEntradaSchema.safeParse({ ...CASA_VALIDA, status: "PUBLICADA" }).success,
+    ).toBe(false);
+  });
+
+  it("rejeita tipo de cama fora do enum", () => {
+    const resultado = casaEntradaSchema.safeParse({
+      ...CASA_VALIDA,
+      camas: [{ tipo: "SOFA_CAMA", quantidade: 1, ambiente: "Sala" }],
+    });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("rejeita latitude ou longitude fora de faixa", () => {
+    expect(
+      casaEntradaSchema.safeParse({
+        ...CASA_VALIDA,
+        localizacao: { ...CASA_VALIDA.localizacao, lat: 200 },
+      }).success,
+    ).toBe(false);
+    expect(
+      casaEntradaSchema.safeParse({
+        ...CASA_VALIDA,
+        localizacao: { ...CASA_VALIDA.localizacao, lng: -200 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejeita distância com km fora de faixa", () => {
+    const resultado = casaEntradaSchema.safeParse({
+      ...CASA_VALIDA,
+      localizacao: {
+        ...CASA_VALIDA.localizacao,
+        distancias: [{ referencia: "Longe", km: 10_000 }],
+      },
+    });
+    expect(resultado.success).toBe(false);
+  });
+
+  it("rejeita ordem, quartos ou banheiros fora da faixa inteira documentada", () => {
+    expect(casaEntradaSchema.safeParse({ ...CASA_VALIDA, ordem: -1 }).success).toBe(false);
+    expect(casaEntradaSchema.safeParse({ ...CASA_VALIDA, ordem: 10_000 }).success).toBe(
+      false,
+    );
+    expect(casaEntradaSchema.safeParse({ ...CASA_VALIDA, quartos: 51 }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejeita capacidadeMaxima acima de 50 (RN do contrato)", () => {
+    expect(
+      casaEntradaSchema.safeParse({ ...CASA_VALIDA, capacidadeMaxima: 51 }).success,
+    ).toBe(false);
+  });
+});
+
+describe("casaEdicaoSchema (PUT, E9)", () => {
+  const CASA_VALIDA_PARA_EDICAO = {
+    nome: "Casa do Lago",
+    slug: "casa-do-lago",
+    resumo: "Casa de madeira à beira do lago, para até 8 pessoas.",
+    descricao:
+      "## Sobre a casa\n\nUma casa de madeira espaçosa, com varanda de frente para o lago.",
+    status: "ATIVA",
+    ordem: 10,
+    destaque: false,
+    capacidadeMaxima: 8,
+    hospedesInclusos: 6,
+    quartos: 3,
+    banheiros: 2,
+    camas: [],
+    comodidades: [],
+    localizacao: { enderecoPublico: "Zona rural, Município X - UF" },
+  };
+
+  it("exige versao, além dos mesmos campos da criação", () => {
+    expect(
+      casaEdicaoSchema.safeParse({ ...CASA_VALIDA_PARA_EDICAO, versao: 3 }).success,
+    ).toBe(true);
+    expect(casaEdicaoSchema.safeParse(CASA_VALIDA_PARA_EDICAO).success).toBe(false);
+  });
+
+  it("rejeita versao negativa ou fracionária", () => {
+    expect(
+      casaEdicaoSchema.safeParse({ ...CASA_VALIDA_PARA_EDICAO, versao: -1 }).success,
+    ).toBe(false);
+    expect(
+      casaEdicaoSchema.safeParse({ ...CASA_VALIDA_PARA_EDICAO, versao: 1.5 }).success,
+    ).toBe(false);
+  });
+});
+
+describe("alterarStatusCasaSchema", () => {
+  it("aceita os três valores de status", () => {
+    for (const status of ["RASCUNHO", "ATIVA", "INATIVA"]) {
+      expect(alterarStatusCasaSchema.safeParse({ status }).success).toBe(true);
+    }
+  });
+
+  it("rejeita valor fora do enum", () => {
+    expect(alterarStatusCasaSchema.safeParse({ status: "PUBLICADA" }).success).toBe(false);
   });
 });

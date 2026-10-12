@@ -46,7 +46,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `packages/shared` — cotação e validação de preços (`dominio/precos.ts`) | ✅ 48 testes (UC-P03) |
 | `packages/shared` — disponibilidade (`dominio/disponibilidade.ts`) | ✅ 27 testes (UC-P02) |
 | `packages/shared` — schemas zod de preço, cotação e disponibilidade | ✅ 23 testes |
-| `packages/shared` — formatação (moeda, data, telefone), comodidades, Casa | ⬜ |
+| `packages/shared` — Casa (`dominio/casas.ts` + `comodidades.ts` + schema) | ✅ 19 testes (UC-A02, parte pura) |
+| `packages/shared` — formatação (moeda, data, telefone) | ⬜ |
 | `backend/`, `infra/`, `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências
