@@ -63,15 +63,18 @@ npm run build              # bundle com esbuild
 
 ## Situação atual
 
-Só existe, por ora, o mínimo da Fase 0 (nenhum recurso AWS ainda no ar):
+Fase 0 completa; Fase 1 começou pela rota que menos depende de configuração ainda
+não construída (só precisa de `Query` na tabela, sem preço nem admin):
 
 | Item | Situação |
 |---|---|
 | `handlers/api-publica.ts` — `GET /api/saude` | ✅ |
-| `lib/config.ts`, `lib/http.ts` | ✅ |
-| `lib/db.ts`, `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`, `lib/auth.ts`, `lib/log.ts`, `lib/erros.ts` | ⬜ |
-| `domain/` (reexportado de `@recanto/shared`) | ⬜ — nasce com a primeira rota que precisar dele |
-| ESLint com `eslint-plugin-import`/`no-restricted-paths` | ⬜ — hoje não há `domain/` nem `lib/` o bastante para a regra ter algo real para verificar; entra junto com o primeiro par `domain/`+`lib/` |
-| `test/integracao/` (DynamoDB Local) | ⬜ — primeira rota a precisar de banco é `GET /api/casas` |
+| `handlers/api-publica.ts` — `GET /api/casas/{id}/disponibilidade` (UC-P02) | ✅ |
+| `lib/config.ts`, `lib/http.ts`, `lib/db.ts` | ✅ |
+| `domain/` (reexportado de `@recanto/shared`: `datas.ts`, `disponibilidade.ts`) | ✅ |
+| ESLint com `eslint-plugin-import`/`no-restricted-paths` (raiz do repo, `eslint.config.mjs`) | ✅ — `domain/` não importa `lib/` nem o AWS SDK, verificado de verdade (não só documentado) |
+| `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre a disponibilidade; os cenários de concorrência/transação entram com `POST /api/solicitacoes` |
+| `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`, `lib/auth.ts`, `lib/log.ts`, `lib/erros.ts` | ⬜ |
+| `handlers/api-publica.ts` — `GET /api/casas`, `GET /api/casas/{slug}`, `GET /api/config-publica`, `POST /api/cotacao` | ⬜ — próximas entregas da Fase 1 |
 | `handlers/api-admin.ts`, `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
 | `templates/` | ⬜ |

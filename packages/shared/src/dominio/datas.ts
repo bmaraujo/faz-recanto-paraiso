@@ -288,3 +288,56 @@ export function formatarDataPtBr(data: DataISO): string {
   const [ano, mes, dia] = validarData(data).split("-");
   return `${dia}/${mes}/${ano}`;
 }
+
+const FORMATADOR_HORA_LOCAL = new Intl.DateTimeFormat("en-CA", {
+  timeZone: FUSO_HORARIO,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+const FORMATADOR_OFFSET_LOCAL = new Intl.DateTimeFormat("en-US", {
+  timeZone: FUSO_HORARIO,
+  timeZoneName: "shortOffset",
+});
+
+const PADRAO_OFFSET_GMT = /^GMT([+-])(\d{1,2})(?::(\d{2}))?$/;
+
+/**
+ * Formata um instante como ISO 8601 **com offset** de `America/Sao_Paulo`
+ * (ex.: `"2026-10-11T18:04:00-03:00"`) — convenção de toda data/hora da API
+ * pública (docs/03-tecnico/03-api-publica.md: "Datas/horas: sempre ISO 8601 com
+ * offset"). `Date.prototype.toISOString` não serve: sempre devolve UTC (`Z`).
+ *
+ * O offset vem do `Intl`, não de um literal `"-03:00"` fixo: o Brasil não tem
+ * horário de verão hoje, mas fixar o literal esconderia uma eventual mudança em
+ * vez de refleti-la.
+ */
+export function formatarInstanteIso(agora: Date): string {
+  if (!(agora instanceof Date) || Number.isNaN(agora.getTime())) {
+    throw new TypeError("agora deve ser um Date válido");
+  }
+
+  const partes: Record<string, string | undefined> = Object.fromEntries(
+    FORMATADOR_HORA_LOCAL.formatToParts(agora).map((parte) => [parte.type, parte.value]),
+  );
+
+  const nomeFuso = FORMATADOR_OFFSET_LOCAL.formatToParts(agora).find(
+    (parte) => parte.type === "timeZoneName",
+  )?.value;
+  const offsetCasado = PADRAO_OFFSET_GMT.exec(nomeFuso ?? "");
+  if (offsetCasado === null) {
+    throw new Error("Não foi possível calcular o offset de America/Sao_Paulo.");
+  }
+
+  const sinal = offsetCasado[1] as string;
+  const horas = offsetCasado[2] as string;
+  const minutos = offsetCasado[3] ?? "00";
+  const offset = `${sinal}${horas.padStart(2, "0")}:${minutos}`;
+
+  return `${partes.year}-${partes.month}-${partes.day}T${partes.hour}:${partes.minute}:${partes.second}${offset}`;
+}

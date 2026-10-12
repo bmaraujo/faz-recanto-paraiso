@@ -4,5 +4,12 @@
     "lib": ["ES2023"],
     "types": ["node", "aws-lambda"]
   },
-  "include": ["src", "test", "esbuild.config.mjs", "vitest.config.ts"]
+  "include": [
+    "src",
+    "test",
+    "scripts",
+    "esbuild.config.mjs",
+    "vitest.config.ts",
+    "vitest.integracao.config.ts"
+  ]
 }

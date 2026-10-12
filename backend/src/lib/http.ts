@@ -14,12 +14,25 @@ import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 
 const CABECALHOS_JSON = { "content-type": "application/json; charset=utf-8" };
 
-/** Resposta de sucesso: serializa `corpo` como JSON. */
+/**
+ * Resposta de sucesso: serializa `corpo` como JSON.
+ *
+ * `cabecalhosExtras` existe para o `Cache-Control` que o contrato técnico de
+ * algumas rotas pede explicitamente (ex.: UC-P02 pede `public, max-age=60`) — a
+ * política de `CachePolicy` do CloudFront fica em `infra/`, mas emitir o cabeçalho
+ * aqui já deixa a resposta correta hoje, independente de qual política o CDK
+ * configurar depois.
+ */
 export function respostaJson(
   statusCode: number,
   corpo: unknown,
+  cabecalhosExtras: Record<string, string> = {},
 ): APIGatewayProxyStructuredResultV2 {
-  return { statusCode, headers: CABECALHOS_JSON, body: JSON.stringify(corpo) };
+  return {
+    statusCode,
+    headers: { ...CABECALHOS_JSON, ...cabecalhosExtras },
+    body: JSON.stringify(corpo),
+  };
 }
 
 /** Resposta de erro no formato do contrato: `{ erro, mensagem, detalhes }`. */

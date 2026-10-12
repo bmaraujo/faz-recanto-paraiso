@@ -8,10 +8,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:integracao": "node scripts/test-integracao.mjs",
     "typecheck": "tsc --noEmit",
     "build": "node esbuild.config.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1149.0",
+    "@aws-sdk/lib-dynamodb": "^3.1149.0",
     "@recanto/shared": "*"
   },
   "devDependencies": {
