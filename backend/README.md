@@ -60,3 +60,18 @@ npm run build              # bundle com esbuild
 - Nenhum `console.log` fora de `lib/log.ts` (regra de lint).
 - Log sem e-mail, telefone, nome, valores ou token.
 - Nenhum uso de `dynamodb:Scan` — a permissão não é concedida.
+
+## Situação atual
+
+Só existe, por ora, o mínimo da Fase 0 (nenhum recurso AWS ainda no ar):
+
+| Item | Situação |
+|---|---|
+| `handlers/api-publica.ts` — `GET /api/saude` | ✅ |
+| `lib/config.ts`, `lib/http.ts` | ✅ |
+| `lib/db.ts`, `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`, `lib/auth.ts`, `lib/log.ts`, `lib/erros.ts` | ⬜ |
+| `domain/` (reexportado de `@recanto/shared`) | ⬜ — nasce com a primeira rota que precisar dele |
+| ESLint com `eslint-plugin-import`/`no-restricted-paths` | ⬜ — hoje não há `domain/` nem `lib/` o bastante para a regra ter algo real para verificar; entra junto com o primeiro par `domain/`+`lib/` |
+| `test/integracao/` (DynamoDB Local) | ⬜ — primeira rota a precisar de banco é `GET /api/casas` |
+| `handlers/api-admin.ts`, `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
+| `templates/` | ⬜ |

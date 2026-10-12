@@ -49,7 +49,9 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `packages/shared` — Casa (`dominio/casas.ts` + `comodidades.ts` + schema) | ✅ 19 testes (UC-A02, parte pura) |
 | `packages/shared` — formatação de moeda (`dominio/formato.ts`) | ✅ 14 testes (UC-P03) |
 | `packages/shared` — telefone (E.164) e mascaramento de e-mail | ⬜ Fase 2 (UC-A13/UC-P04/UC-P05) |
-| `backend/`, `infra/`, `site/` | ⬜ |
+| `backend` — workspace, esbuild, `GET /api/saude` | ✅ 6 testes |
+| `backend` — demais rotas de Fase 1, `domain/`, DynamoDB Local | ⬜ |
+| `infra/`, `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências
 [8.1 (domínio) e 8.4 (região)](./docs/06-planejamento/02-pendencias-definir.md).
