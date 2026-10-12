@@ -375,7 +375,7 @@ de propagação do CloudFront.
 
 | O quê | Onde |
 |---|---|
-| Console AWS | conta `627010764306` `[DEFINIR]`, região `us-east-1` |
+| Console AWS | conta `627010764306`, região `sa-east-1` (certificado em `us-east-1`) |
 | Repositório | https://github.com/bmaraujo/faz-recanto-paraiso |
 | Backoffice | `https://<dominio>/admin` |
 | Status da AWS | https://health.aws.amazon.com/health/status |

@@ -5,7 +5,7 @@
 | | `dev` | `prod` |
 |---|---|---|
 | Conta AWS | **a mesma** (`627010764306`) `[DEFINIR]` | a mesma |
-| Região | `us-east-1` | `us-east-1` |
+| Região | `sa-east-1` (certificado em `us-east-1`) | `sa-east-1` (certificado em `us-east-1`) |
 | Domínio | CloudFront padrão | domínio próprio `[DEFINIR]` |
 | Tabela | `recanto-paraiso-dev` | `recanto-paraiso-prod` |
 | `RemovalPolicy` da tabela | `DESTROY` | **`RETAIN`** |
@@ -30,7 +30,8 @@
 
 ```bash
 # 1. Bootstrap do CDK
-npx cdk bootstrap aws://627010764306/us-east-1
+npx cdk bootstrap aws://627010764306/sa-east-1
+npx cdk bootstrap aws://627010764306/us-east-1   # só para o certificado ACM
 
 # 2. Role OIDC para o GitHub Actions (sem chave de longo prazo)
 cd infra && npx cdk deploy RecantoParaisoBootstrap --context stage=prod
@@ -225,7 +226,7 @@ foi?" sem adivinhação.
 
 - [ ] Todos os `[DEFINIR]` de [pendências](../06-planejamento/02-pendencias-definir.md) resolvidos
 - [ ] Domínio registrado e DNS apontando
-- [ ] Certificado ACM emitido em `us-east-1`
+- [ ] Certificado ACM emitido em `us-east-1` (exigência do CloudFront; o resto em `sa-east-1`)
 - [ ] Domínio verificado no SES com DKIM, SPF e DMARC
 - [ ] **SES fora do sandbox** (chamado aberto com antecedência)
 - [ ] Parâmetros `SecureString` criados

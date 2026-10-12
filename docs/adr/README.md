@@ -41,6 +41,7 @@ o gatilho evita tanto a mudança precipitada quanto a teimosia.
 | [008](./ADR-008-cognito-para-admin.md) | Cognito para autenticar o admin | Aceito |
 | [009](./ADR-009-conteudo-no-banco-com-publicacao.md) | **Conteúdo no banco + publicação estática** | Aceito |
 | [010](./ADR-010-pre-reserva-com-expiracao.md) | **Pré-reserva com expiração** | Aceito |
+| [011](./ADR-011-regiao-sa-east-1.md) | **Dados em `sa-east-1`, certificado em `us-east-1`** | Aceito |
 
 Em **negrito**, as decisões que **divergem** da especificação inicial
 (`../_referencia/especificacao-inicial-v0.md`).

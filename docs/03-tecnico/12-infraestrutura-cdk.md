@@ -202,20 +202,34 @@ Distribution
   defaultRootObject: "index.html"
   errorResponses: 403/404 → /404.html (status 404)
   responseHeadersPolicy: ver abaixo
-  priceClass: PRICE_CLASS_100          ← só América do Norte e Europa: mais barato
+  priceClass: PRICE_CLASS_ALL          ← inclui São Paulo; público é só brasileiro
   httpVersion: HTTP2_AND_3
   logging: DESABILITADO                 ← custo de S3 + privacidade
-  certificate: ACM em us-east-1         [DEFINIR domínio]
+  certificate: ACM em us-east-1         ← única coisa fora de sa-east-1 (ADR-011)
+                                        [DEFINIR domínio]
 
 CloudFront Function (viewer-request)   reescrita de URL e rotas de SPA
 OAC                                     para o bucket
 ```
 
-> `priceClass: PRICE_CLASS_100` reduz o custo e, como o público é brasileiro, a
-> consequência é a latência via edge dos EUA. Para um site de fotos com cache alto,
-> é aceitável. **Alternativa a avaliar:** `PRICE_CLASS_ALL` inclui São Paulo e é
-> perceptivelmente mais rápido no Brasil, por um custo de egress maior por GB. A
-> decisão depende de medir o tráfego real — começar com `100` e reavaliar.
+> **`priceClass: PRICE_CLASS_ALL`.** A classe de preço não decide *quem* acessa o
+> site — decide de quais edges o CloudFront serve. A `PRICE_CLASS_100` cobre América do
+> Norte e Europa: o visitante brasileiro continuaria acessando normalmente, só seria
+> atendido por um edge nos EUA. Edges da América do Sul entram apenas na
+> `PRICE_CLASS_ALL` (❓ confirmar na documentação da AWS).
+>
+> Com a origem em `sa-east-1` ([ADR-011](../adr/ADR-011-regiao-sa-east-1.md)) e público
+> exclusivamente brasileiro, a classe 100 seria o pior dos dois mundos: o conteúdo
+> estático viajaria ao exterior para voltar, e cada rota sem cache
+> (`POST /api/cotacao`, `POST /api/solicitacoes`) pagaria uma travessia Brasil ↔ EUA
+> **extra** para acabar em São Paulo.
+>
+> **Custo:** o egress por GB na América do Sul é mais caro (❓ tipicamente ~2-3× a
+> tarifa dos EUA — verificar na calculadora). No volume previsto (~5 GB/mês) tudo cabe
+> no free tier do CloudFront, então a diferença esperada é **US$ 0,00**. A tarifa mais
+> alta só passa a importar se o tráfego estourar o free tier — e aí o gatilho é
+> comprimir as fotos, não voltar a servir do exterior. Ver
+> [custos](../04-operacao/03-custos.md).
 
 #### Pegadinha: OAC + Function URL + POST
 
