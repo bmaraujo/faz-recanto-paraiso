@@ -1,0 +1,21 @@
+{
+  "name": "@recanto/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lambdas (TypeScript) atras do CloudFront em /api/*",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "build": "node esbuild.config.mjs"
+  },
+  "dependencies": {
+    "@recanto/shared": "*"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152",
+    "esbuild": "^0.25.0"
+  }
+}
