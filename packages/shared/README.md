@@ -29,3 +29,23 @@ dispensa o recálculo no servidor**:
 Mesma lógica, fontes de dados independentes. O cliente é um atalho de UX; o servidor é
 a autoridade. Divergência entre os dois é **bug**, e em `dev` o cliente loga um aviso
 no console quando os valores diferem.
+
+## Decisões de implementação
+
+### Este pacote é a única casa das regras puras
+
+A documentação lista `calcularCotacao`, `datas` e afins tanto aqui quanto em
+`backend/src/domain/`. Duas cópias da regra de preço seria o pior resultado possível,
+então a implementação canônica mora **aqui**, em `src/dominio/`, e
+`backend/src/domain/` apenas reexporta o que os handlers usam. A regra arquitetural
+continua valendo: nada em `src/dominio/` faz I/O, importa `lib/` ou conhece o AWS SDK.
+
+Os testes de unidade acompanham a implementação (`packages/shared/test/`), e é sobre
+`src/dominio/**` que o portão de cobertura de 95% é medido.
+
+### O pacote é consumido como código-fonte TypeScript
+
+`exports` aponta para os `.ts`, sem passo de build. Todos os consumidores são
+bundlers (esbuild no `backend`, Vite/Astro no `site`, Vitest nos testes), então um
+artefato compilado intermediário só adicionaria uma etapa que pode ficar velha.
+Por isso os imports internos são sem extensão.

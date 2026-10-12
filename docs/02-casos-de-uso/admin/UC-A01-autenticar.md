@@ -89,7 +89,7 @@ senha no 3G faz ele parar de usar o sistema — e o sistema sem uso não serve p
 ### Endpoints do Cognito (Hosted UI)
 
 ```
-GET  https://<dominio>.auth.us-east-1.amazoncognito.com/oauth2/authorize
+GET  https://<dominio>.auth.sa-east-1.amazoncognito.com/oauth2/authorize
        ?response_type=code
        &client_id=<id>
        &redirect_uri=https://<site>/admin/callback
@@ -98,7 +98,7 @@ GET  https://<dominio>.auth.us-east-1.amazoncognito.com/oauth2/authorize
        &code_challenge=<S256 do verifier>
        &code_challenge_method=S256
 
-POST https://<dominio>.auth.us-east-1.amazoncognito.com/oauth2/token
+POST https://<dominio>.auth.sa-east-1.amazoncognito.com/oauth2/token
        grant_type=authorization_code
        client_id=<id>
        code=<code>

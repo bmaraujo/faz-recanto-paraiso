@@ -133,10 +133,10 @@ script-src 'self';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data:;
 font-src 'self';
-connect-src 'self' https://*.auth.us-east-1.amazoncognito.com;
+connect-src 'self' https://*.auth.sa-east-1.amazoncognito.com;
 frame-src https://www.openstreetmap.org https://www.google.com;
 frame-ancestors 'none';
-form-action 'self' https://*.auth.us-east-1.amazoncognito.com;
+form-action 'self' https://*.auth.sa-east-1.amazoncognito.com;
 base-uri 'self';
 object-src 'none';
 upgrade-insecure-requests

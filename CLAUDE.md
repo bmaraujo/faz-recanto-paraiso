@@ -53,7 +53,9 @@ períodos, confirma/recusa reservas e **edita os textos dos e-mails**.
 | Segredos | SSM Parameter Store (SecureString) |
 | Testes | Vitest + DynamoDB Local (Docker) |
 
-Região: `us-east-1` (ACM do CloudFront exige).
+Região: `sa-east-1` para todos os dados. **Apenas o certificado ACM fica em
+`us-east-1`**, porque o CloudFront exige — a restrição vale só para o certificado.
+Ver [ADR-011](./docs/adr/ADR-011-regiao-sa-east-1.md).
 
 ## Onde fica o quê
 

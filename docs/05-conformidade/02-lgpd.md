@@ -161,27 +161,34 @@ nesse caso, o caminho é cancelar e então anonimizar.
 
 | Operador | O que acessa | Localização | Base |
 |---|---|---|---|
-| **AWS** | Todos os dados (hospedagem, banco, e-mail) | `us-east-1` — **Estados Unidos** | Cláusulas contratuais padrão da AWS; DPA do AWS |
+| **AWS** | Todos os dados (hospedagem, banco, e-mail) | `sa-east-1` — **Brasil (São Paulo)** | DPA da AWS; **sem** transferência internacional |
 | **GitHub** | **Nenhum dado pessoal** (só conteúdo das casas no build) | EUA | — |
 | **WhatsApp/Meta** | A conversa, quando o titular a inicia | EUA | Relação direta titular ↔ Meta |
 | **Airbnb/Booking** | **Apenas datas** no `.ics` | EUA | Nenhum dado pessoal transferido |
 
 ### Transferência internacional (art. 33)
 
-Os dados ficam em **`us-east-1` (Estados Unidos)**. Isso é uma transferência
-internacional e precisa estar **declarado na política de privacidade**.
+**Não há transferência internacional de dados pessoais.** Os dados de hóspedes
+(nome, e-mail, telefone) ficam em **`sa-east-1` (São Paulo, Brasil)** — decisão
+explícita do proprietário, registrada em
+[ADR-011](../adr/ADR-011-regiao-sa-east-1.md). O art. 33 não se aplica.
 
-A escolha é de custo: `us-east-1` é a região mais barata e o ACM do CloudFront exige
-certificado lá.
+O único recurso fora do Brasil é o **certificado ACM do CloudFront**, que o serviço
+exige em `us-east-1`. Um certificado TLS não contém dado pessoal, então isso não
+configura transferência.
 
-**Alternativa a considerar:** `sa-east-1` (São Paulo) manteria os dados no Brasil, o
-que simplifica a conformidade e melhora a latência da API. Custa mais (tipicamente
-20-40% a mais por serviço) e exigiria manter o certificado do CloudFront em
-`us-east-1` de qualquer forma. `[DEFINIR]` — vale a decisão explícita do proprietário,
-não só a herança do custo.
+Dois pontos que **continuam** precisando constar na política de privacidade, porque
+envolvem terceiros fora do Brasil ainda que nós não transfiramos dado pessoal a eles:
 
-> Esta é uma decisão em que a conformidade e o custo apontam para lados diferentes.
-> Documentar a escolha e a justificativa é parte da responsabilização (art. 6º, X).
+| Situação | O que é |
+|---|---|
+| WhatsApp | A conversa é uma relação direta entre o titular e a Meta, iniciada por ele. Nós só publicamos o link. |
+| Airbnb/Booking (Fase 4) | O `.ics` exportado contém **apenas datas** — nenhum dado pessoal sai. |
+
+> A decisão de região era o ponto em que conformidade e custo apontavam para lados
+> diferentes, e a conformidade venceu porque a diferença de custo no nosso volume é de
+> centavos. Documentar a escolha e a justificativa é parte da responsabilização
+> (art. 6º, X) — é o que o ADR-011 faz.
 
 ## Política de privacidade — conteúdo obrigatório
 
@@ -244,7 +251,7 @@ Modelo de comunicação e contato da ANPD: `[DEFINIR]` com apoio jurídico.
 - [ ] Política de privacidade publicada, revisada por advogado
 - [ ] Controlador identificado com nome e documento
 - [ ] Contato do encarregado publicado
-- [ ] Transferência internacional declarada (ou migração para `sa-east-1` decidida)
+- [ ] ✅ Transferência internacional: não se aplica (dados em `sa-east-1`, ADR-011)
 - [ ] Prazos de retenção definidos e implementados (TTL)
 - [ ] Aceite dos termos registrado com data/hora na reserva
 - [ ] Nenhum cookie de rastreamento

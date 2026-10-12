@@ -8,17 +8,52 @@ A coluna **Bloqueia** diz a partir de qual fase o item se torna impedimento.
 
 ---
 
+## Decisões já tomadas
+
+| # | Item | Decisão | Data |
+|---|---|---|---|
+| 8.3 | Conta AWS | `627010764306` | 2026-10-12 |
+| 8.4 | **Região** | `sa-east-1` para os dados; só o certificado ACM em `us-east-1` — [ADR-011](../adr/ADR-011-regiao-sa-east-1.md) | 2026-10-12 |
+| 8.5 | PITR no DynamoDB | Ligado em `prod` | 2026-10-12 |
+| 8.6 | Versionamento do bucket S3 | Ligado (~US$ 0,01/mês, protege as fotos) | 2026-10-12 |
+| 8.9 | Limite do alerta de orçamento | US$ 5/mês | 2026-10-12 |
+| 3.1 | **Prazo da pré-reserva** | Configurável no backoffice, em horas — já previsto em [UC-A13](../02-casos-de-uso/admin/UC-A13-configuracao-geral.md) (faixa 1–720 h, padrão 48) | 2026-10-12 |
+| 2.3 | Dias de "fim de semana" | Sexta e sábado, como padrão configurável por casa | 2026-10-12 |
+| 2.10 | Crianças contam para a capacidade | **Sim** | 2026-10-12 |
+| 8.1, 8.2 | **Domínio e DNS** | **Adiados.** Até a decisão, usar os endereços padrão da AWS (domínio do CloudFront e do Cognito) | 2026-10-12 |
+
+> ### Adiar o domínio tem consequência em cadeia
+>
+> Sem domínio não há como verificar um domínio no SES (DKIM, SPF, DMARC) nem sustentar
+> o chamado de saída do sandbox — e esses eram justamente os dois itens de **prazo
+> externo** desta lista. O efeito prático:
+>
+> - **Fases 0 e 1 não sofrem.** O CloudFront serve por `https://<id>.cloudfront.net`
+>   com certificado próprio, e o Cognito pela Hosted UI padrão. Não há e-mail nessas
+>   fases.
+> - **Fase 2 pode ser construída e testada, mas não lançada.** Em sandbox o SES só
+>   envia para destinatários verificados um a um, o que basta para desenvolver, e
+>   **não** basta para escrever a um hóspede real.
+>
+> Ou seja: o domínio deixa de ser urgente agora, mas precisa estar decidido **antes do
+> fim da Fase 1**, senão vira o gargalo da Fase 2. O prazo da AWS (~24 h) continua lá,
+> só mudou de lugar na fila.
+
+---
+
 ## Bloqueadores com prazo externo (resolver JÁ, na Fase 0)
 
-| # | Item | Por que é urgente | Bloqueia |
-|---|---|---|---|
-| 1 | **Domínio** | Precisa estar registrado e com DNS apontando antes do ACM | Fase 1 |
-| 2 | **Saída do sandbox do SES** | A AWS leva até ~24 h para responder o chamado | Fase 2 |
-| 3 | **Verificação do domínio no SES** (DKIM, SPF, DMARC) | Depende de propagação de DNS | Fase 2 |
-| 4 | **Conta AWS e região** | Define onde tudo é criado | Fase 0 |
+| # | Item | Por que é urgente | Bloqueia | Situação |
+|---|---|---|---|---|
+| 1 | **Domínio** | Precisa estar registrado e com DNS apontando antes do ACM | Fase 2 | **adiado** — endereços padrão da AWS até lá |
+| 2 | **Saída do sandbox do SES** | A AWS leva até ~24 h para responder o chamado | Fase 2 | espera o item 1 |
+| 3 | **Verificação do domínio no SES** (DKIM, SPF, DMARC) | Depende de propagação de DNS | Fase 2 | espera o item 1 |
+| 4 | **Conta AWS e região** | Define onde tudo é criado | Fase 0 | ✅ resolvido |
 
-> Os itens 2 e 3 são os únicos com prazo que não depende de nós. Deixá-los para o fim
-> atrasa o lançamento por motivo evitável.
+> Os itens 2 e 3 são os únicos com prazo que não depende de nós, e os dois dependem do
+> item 1. Com o domínio adiado, eles saem do caminho das Fases 0 e 1 — mas o relógio
+> deles passa a começar só quando o domínio for registrado. Ver a consequência em
+> cadeia acima.
 
 ---
 
@@ -61,15 +96,18 @@ A coluna **Bloqueia** diz a partir de qual fase o item se torna impedimento.
 
 | # | Item | Exemplo | Bloqueia |
 |---|---|---|---|
-| 3.1 | **Prazo da pré-reserva** | 48 horas | Fase 2 |
+| 3.1 | ~~**Prazo da pré-reserva**~~ | ✅ configurável no admin, padrão 48 h | — |
 | 3.2 | Antecedência mínima | 1 dia | Fase 2 |
 | 3.3 | Janela de reserva | 12 meses | Fase 2 |
 | 3.4 | Máximo de solicitações pendentes por e-mail | 3 | Fase 2 |
 
-> **3.1 é a decisão de produto mais importante desta lista.** Prazo curto (24 h) libera
-> datas rápido mas pressiona o hóspede e exige resposta ágil do proprietário. Prazo
-> longo (72 h) é confortável mas trava datas. **48 h é o equilíbrio recomendado**, e o
-> admin sempre pode estender caso a caso ([UC-A09](../02-casos-de-uso/admin/UC-A09-estender-prazo.md)).
+> **3.1 era a decisão de produto mais importante desta lista**, e deixou de ser uma
+> decisão de uma vez: o prazo é **configurável no backoffice, em horas**
+> ([UC-A13](../02-casos-de-uso/admin/UC-A13-configuracao-geral.md), faixa 1–720 h),
+> começa em 48 h e muda a próxima solicitação na hora, sem deploy. Prazo curto (24 h)
+> libera datas rápido mas pressiona o hóspede; longo (72 h) é confortável mas trava
+> datas. Dá para calibrar com a prática, e o admin ainda pode estender caso a caso
+> ([UC-A09](../02-casos-de-uso/admin/UC-A09-estender-prazo.md)).
 
 ## 4. Política de cancelamento
 
@@ -129,24 +167,24 @@ A coluna **Bloqueia** diz a partir de qual fase o item se torna impedimento.
 
 | # | Item | Exemplo / recomendação | Bloqueia |
 |---|---|---|---|
-| 8.1 | **Domínio** | `recantoparaiso.com.br` | Fase 1 |
-| 8.2 | DNS no Route 53 (US$ 0,50/mês) ou no Registro.br (grátis) | **Route 53** — integra com ACM e CDK | Fase 1 |
-| 8.3 | Conta AWS | `627010764306` | **Fase 0** |
-| 8.4 | **Região** | `us-east-1` (mais barata) ou `sa-east-1` (dados no Brasil) | **Fase 0** |
-| 8.5 | PITR no DynamoDB (centavos) | **Sim** | Fase 0 |
-| 8.6 | **Versionamento do bucket S3** (~US$ 0,01/mês) | **Recomendado** — protege contra perda de fotos | Fase 1 |
+| 8.1 | **Domínio** | **adiado** — endereço padrão do CloudFront até a decisão | Fase 2 |
+| 8.2 | DNS no Route 53 (US$ 0,50/mês) ou no Registro.br (grátis) | **adiado** com o 8.1; recomendação segue Route 53 | Fase 2 |
+| 8.3 | ~~Conta AWS~~ | ✅ `627010764306` | — |
+| 8.4 | ~~**Região**~~ | ✅ `sa-east-1` — ver [decisões tomadas](#decisões-já-tomadas) | — |
+| 8.5 | ~~PITR no DynamoDB~~ | ✅ ligado em `prod` | — |
+| 8.6 | ~~**Versionamento do bucket S3**~~ | ✅ ligado (~US$ 0,01/mês) | — |
 | 8.7 | MFA no login do admin | **Recomendado** | Fase 2 |
 | 8.8 | Analytics (sem cookie) ou nenhum | Nenhum por padrão | — |
-| 8.9 | Limite do alerta de orçamento | US$ 5/mês | Fase 0 |
+| 8.9 | ~~Limite do alerta de orçamento~~ | ✅ US$ 5/mês | — |
 
-> **8.4 é a decisão em que custo e conformidade divergem.** `us-east-1` é ~20-40% mais
-> barata; `sa-east-1` mantém os dados pessoais no Brasil e simplifica a LGPD.
-> No nosso volume, a diferença absoluta é de centavos — então a conformidade
-> provavelmente deveria vencer. Ver [LGPD](../05-conformidade/02-lgpd.md#transferência-internacional-art-33).
+> **8.4 era a decisão em que custo e conformidade divergiam.** Resolvida em favor da
+> conformidade: `sa-east-1`, porque no nosso volume a diferença de custo é de centavos.
+> A restrição do ACM vale só para o certificado, não para a região inteira —
+> era o que a documentação original generalizava. Ver
+> [ADR-011](../adr/ADR-011-regiao-sa-east-1.md).
 >
-> **8.6:** o versionamento foi desligado por custo, mas o risco de um
-> `s3 sync --delete` apagar as fotos é real e irrecuperável. Por ~US$ 0,01/mês, vale
-> ligar. Ver [segurança](../05-conformidade/01-seguranca.md#o-que-não-fazemos-e-por-quê).
+> **8.6 foi ligado:** o versionamento havia sido desligado por custo, mas o risco de um
+> `s3 sync --delete` apagar as fotos é real e irrecuperável. Por ~US$ 0,01/mês, vale. Ver [segurança](../05-conformidade/01-seguranca.md#o-que-não-fazemos-e-por-quê).
 
 ## 9. Jurídico e LGPD
 
@@ -158,7 +196,7 @@ A coluna **Bloqueia** diz a partir de qual fase o item se torna impedimento.
 | 9.4 | **Política de privacidade revisada por advogado** | Fase 2 |
 | 9.5 | Termos de uso | Fase 2 |
 | 9.6 | Prazo de retenção de dados de reservas concluídas | Fase 3 (exemplo: 5 anos) |
-| 9.7 | Decisão sobre transferência internacional (item 8.4) | Fase 2 |
+| 9.7 | ~~Decisão sobre transferência internacional (item 8.4)~~ | ✅ não há: dados em `sa-east-1` |
 
 ## 10. Canais externos (Fase 4)
 
@@ -177,9 +215,9 @@ A coluna **Bloqueia** diz a partir de qual fase o item se torna impedimento.
 
 | Fase | Pendências que a bloqueiam |
 |---|---|
-| **Fase 0** | 8.3, 8.4, 8.5, 8.9 |
-| **Fase 1** | 1.1–1.9, 2.1–2.11, 5.1–5.8, 6.1–6.3, 6.5–6.7, 6.10, 6.12, 7.1, 8.1, 8.2, 8.6 |
-| **Fase 2** | 3.1–3.4, 4.1–4.4, 7.2–7.5, 8.7, 9.1–9.5, 9.7, + SES fora do sandbox |
+| **Fase 0** | ✅ nenhuma — todas resolvidas |
+| **Fase 1** | 1.1–1.9, 2.1–2.2, 2.4–2.9, 2.11, 5.1–5.8, 6.1–6.3, 6.5–6.7, 6.10, 6.12, 7.1 |
+| **Fase 2** | 3.2–3.4, 4.1–4.4, 7.2–7.5, 8.1, 8.2, 8.7, 9.1–9.5, + domínio e SES fora do sandbox |
 | **Fase 3** | 6.4, 6.8, 6.9, 6.11, 7.6, 9.6 |
 | **Fase 4** | 10.1–10.4 |
 
@@ -189,7 +227,7 @@ Sugestão prática, porque uma lista de 70 itens de uma vez não é respondida:
 
 | Momento | O que pedir |
 |---|---|
-| Conversa 1 (antes da Fase 0) | Itens 8.3, 8.4, 8.1 — decisões de conta e domínio |
+| ~~Conversa 1 (antes da Fase 0)~~ | ✅ feita: conta, região e prazo da pré-reserva |
 | Conversa 2 (durante a Fase 0) | Itens 1.1–1.9, 2.1–2.11 — identidade e preços |
 | **Tarefa dele** | Item 1.6 — as fotos. É o que mais demora |
 | Conversa 3 (durante a Fase 1) | Itens 5, 6 — regras e chegada |

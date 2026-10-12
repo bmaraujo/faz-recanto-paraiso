@@ -2,8 +2,10 @@
 
 Meta: **até US$ 3/mês na AWS**, excluindo domínio.
 
-> ⚠️ **Os valores abaixo são estimativas baseadas na tabela de preços da AWS para
-> `us-east-1` e devem ser confirmados na [calculadora oficial](https://calculator.aws)
+> ⚠️ **Os valores abaixo foram estimados para `us-east-1`, mas a região decidida é
+> `sa-east-1` ([ADR-011](../adr/ADR-011-regiao-sa-east-1.md)), tipicamente 20-40% mais
+> cara por serviço — e alguns free tiers são por região e não somam entre elas. Toda
+> esta página precisa ser refeita na [calculadora oficial](https://calculator.aws)
 > antes de qualquer decisão.** Preços da AWS mudam, e alguns free tiers (notadamente o
 > do CloudFront) foram alterados nos últimos anos. Não tenho certeza da configuração
 > exata vigente de todos eles — **verifique** os itens marcados com ❓.
@@ -161,7 +163,7 @@ Nenhuma decisão de custo é permanente. Quando um destes acontecer, reavalie:
 | Tráfego de bot significativo | AWS WAF com regra de rate limit (~US$ 6/mês) |
 | > 5.000 reservas/ano | Adicionar `GSI2` no DynamoDB |
 | > 30 casas | Item agregado de agenda por mês |
-| Reclamação de latência no Brasil | `PRICE_CLASS_ALL` (inclui São Paulo, egress mais caro) |
+| Egress acima do free tier com `PRICE_CLASS_ALL` | Comprimir mais as fotos; avaliar AVIF — **não** voltar a servir de edge no exterior |
 | Demanda por AVIF/múltiplos tamanhos | Lambda com `sharp` acionada por evento do S3 |
 | Volume de e-mail > 5.000/mês | Revisar o custo do SES (segue baixo) |
 

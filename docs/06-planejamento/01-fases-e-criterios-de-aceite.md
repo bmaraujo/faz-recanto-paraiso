@@ -257,7 +257,6 @@ Registradas para não serem reinventadas, com o gatilho que as justificaria:
 | `GSI2` por status/criação no DynamoDB | > 5.000 reservas/ano |
 | Item agregado de agenda por mês | > 30 casas |
 | AWS WAF com rate limit | Tráfego de bot que afete o custo |
-| Migração para `sa-east-1` | Decisão de conformidade (dados no Brasil) |
 | Avaliações de hóspedes com moderação | Pedido do proprietário |
 | Cupons de desconto | Se o pagamento algum dia entrar no site |
 | App mobile | Nunca se paga nesse volume |

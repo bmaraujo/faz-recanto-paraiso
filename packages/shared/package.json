@@ -1,0 +1,17 @@
+{
+  "name": "@recanto/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tipos, schemas e regras de dominio puras compartilhadas entre backend e site",
+  "exports": {
+    ".": "./src/index.ts",
+    "./dominio/datas": "./src/dominio/datas.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
+  }
+}

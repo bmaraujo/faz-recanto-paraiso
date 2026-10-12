@@ -66,8 +66,9 @@ Quando houver dúvida entre duas soluções, a ordem de desempate é:
 
 - Nenhum serviço pago recorrente novo (EC2, Lightsail, RDS, NAT Gateway, ALB, WAF,
   Secrets Manager, API Gateway) sem aprovação explícita do proprietário.
-- Região AWS: `us-east-1` — é a mais barata e o certificado ACM do CloudFront precisa
-  estar lá. A latência é irrelevante porque o conteúdo é servido pelo CloudFront.
+- Região AWS: `sa-east-1` — mantém os dados pessoais no Brasil e dispensa a discussão
+  de transferência internacional. **Só o certificado ACM fica em `us-east-1`**, que é
+  exigência do CloudFront. Ver [ADR-011](../adr/ADR-011-regiao-sa-east-1.md).
 - Um único administrador. Não há papéis, permissões granulares nem multi-tenant.
 - Dinheiro sempre em **centavos (inteiro)**. Datas de estadia sempre `YYYY-MM-DD`,
   fuso `America/Sao_Paulo`.
