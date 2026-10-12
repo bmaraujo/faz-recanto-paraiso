@@ -1,16 +1,31 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import type { ConfigPrecos } from "@recanto/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ItemOcupacao } from "../../../src/lib/db";
 import { criarEvento } from "../../evento-teste";
 
-const { obterStatusCasa, consultarOcupacoes } = vi.hoisted(() => ({
+const {
+  obterStatusCasa,
+  consultarOcupacoes,
+  obterConfigPrecos,
+  obterConfigGeralCotacao,
+} = vi.hoisted(() => ({
   obterStatusCasa: vi.fn<(casaId: string) => Promise<string | undefined>>(),
   consultarOcupacoes:
     vi.fn<(casaId: string, de: string, ate: string) => Promise<ItemOcupacao[]>>(),
+  obterConfigPrecos: vi.fn<(casaId: string) => Promise<ConfigPrecos | undefined>>(),
+  obterConfigGeralCotacao: vi.fn<
+    () => Promise<{ antecedenciaMinimaDias: number; janelaReservaMeses: number }>
+  >(),
 }));
 
-vi.mock("../../../src/lib/db", () => ({ obterStatusCasa, consultarOcupacoes }));
+vi.mock("../../../src/lib/db", () => ({
+  obterStatusCasa,
+  consultarOcupacoes,
+  obterConfigPrecos,
+  obterConfigGeralCotacao,
+}));
 
 import { handler } from "../../../src/handlers/api-publica";
 
@@ -181,5 +196,170 @@ describe("GET /api/casas/{casaId}/disponibilidade", () => {
     const resposta = await handler(evento(CASA_ID, { de: "2026-11-01", ate: "2026-11-30" }));
 
     expect(resposta.headers).toMatchObject({ "cache-control": "public, max-age=60" });
+  });
+});
+
+describe("POST /api/cotacao", () => {
+  const CASA_ID = "01HQZZZZZZZZZZZZZZZZZZZZZZ";
+
+  // Mesma configuração e mesma estadia do exemplo de
+  // docs/02-casos-de-uso/publico/UC-P03-simular-preco.md#contrato-técnico —
+  // os números do teste batem com os da documentação de propósito.
+  const CONFIG_PRECOS: ConfigPrecos = {
+    diariaBaseCentavos: 50_000,
+    diariaFimDeSemanaCentavos: 65_000,
+    diasFimDeSemana: ["SEX", "SAB"],
+    temporadas: [],
+    feriados: [],
+    minNoitesPadrao: 2,
+    maxNoites: 60,
+    taxaLimpezaCentavos: 25_000,
+    hospedesInclusos: 6,
+    capacidadeMaxima: 10,
+    valorHospedeExtraPorNoiteCentavos: 5_000,
+  };
+
+  const CORPO_VALIDO = {
+    casaId: CASA_ID,
+    checkin: "2026-11-20",
+    checkout: "2026-11-23",
+    hospedes: 7,
+  };
+
+  function evento(corpo: unknown, extras: Partial<APIGatewayProxyEventV2> = {}) {
+    return criarEvento("POST", "/api/cotacao", {
+      body: typeof corpo === "string" ? corpo : JSON.stringify(corpo),
+      ...extras,
+    });
+  }
+
+  beforeEach(() => {
+    obterStatusCasa.mockReset();
+    obterConfigPrecos.mockReset();
+    obterConfigGeralCotacao.mockReset();
+    consultarOcupacoes.mockReset();
+
+    // "hoje" fixo: calcularCotacao valida antecedência/janela contra a data real.
+    // Só `Date` (ver test/integracao/cotacao.test.ts) — aqui não há I/O real, mas
+    // mantém o mesmo hábito em vez de fakear timers que ninguém pediu.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T12:00:00Z"));
+
+    obterStatusCasa.mockResolvedValue("ATIVA");
+    obterConfigPrecos.mockResolvedValue(CONFIG_PRECOS);
+    obterConfigGeralCotacao.mockResolvedValue({
+      antecedenciaMinimaDias: 1,
+      janelaReservaMeses: 12,
+    });
+    consultarOcupacoes.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("recalcula a cotação e bate com o exemplo do contrato técnico (UC-P03)", async () => {
+    const resposta = await handler(evento(CORPO_VALIDO));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({
+      noites: 3,
+      subtotalDiariasCentavos: 180_000,
+      acrescimoHospedesCentavos: 15_000,
+      descontoCentavos: 0,
+      taxaLimpezaCentavos: 25_000,
+      totalCentavos: 220_000,
+      minNoitesExigido: 2,
+      disponivel: true,
+      noitesIndisponiveis: [],
+      estimativa: true,
+      avisoEstimativa: "Valor estimado. O valor final é confirmado pelo proprietário.",
+    });
+  });
+
+  it("consulta a ocupação com exatamente checkin/checkout do pedido", async () => {
+    await handler(evento(CORPO_VALIDO));
+    expect(consultarOcupacoes).toHaveBeenCalledWith(CASA_ID, "2026-11-20", "2026-11-23");
+  });
+
+  it("responde 200 com disponivel:false quando há noite ocupada (A6 — nunca bloqueia pelo preço)", async () => {
+    consultarOcupacoes.mockResolvedValue([{ SK: "NOITE#2026-11-21" }]);
+
+    const resposta = await handler(evento(CORPO_VALIDO));
+    const corpo = JSON.parse(resposta.body as string) as {
+      disponivel: boolean;
+      noitesIndisponiveis: string[];
+      totalCentavos: number;
+    };
+
+    expect(resposta.statusCode).toBe(200);
+    expect(corpo.disponivel).toBe(false);
+    expect(corpo.noitesIndisponiveis).toEqual(["2026-11-21"]);
+    expect(corpo.totalCentavos).toBe(220_000);
+  });
+
+  it("responde 404 quando a casa não existe (sem ler preço nem ocupação)", async () => {
+    obterStatusCasa.mockResolvedValue(undefined);
+
+    const resposta = await handler(evento(CORPO_VALIDO));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(obterConfigPrecos).not.toHaveBeenCalled();
+    expect(consultarOcupacoes).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a casa está INATIVA/RASCUNHO", async () => {
+    obterStatusCasa.mockResolvedValue("RASCUNHO");
+    const resposta = await handler(evento(CORPO_VALIDO));
+    expect(resposta.statusCode).toBe(404);
+  });
+
+  it("responde 404 quando a casa está ativa mas sem preços configurados (E4)", async () => {
+    obterConfigPrecos.mockResolvedValue(undefined);
+
+    const resposta = await handler(evento(CORPO_VALIDO));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(consultarOcupacoes).not.toHaveBeenCalled();
+  });
+
+  it("responde 422 com o código de domínio quando a capacidade é excedida", async () => {
+    const resposta = await handler(evento({ ...CORPO_VALIDO, hospedes: 99 }));
+
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({
+      erro: "CAPACIDADE_EXCEDIDA",
+      detalhes: { capacidadeMaxima: 10 },
+    });
+    expect(consultarOcupacoes).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o corpo está ausente", async () => {
+    const resposta = await handler(criarEvento("POST", "/api/cotacao"));
+    expect(resposta.statusCode).toBe(400);
+  });
+
+  it("responde 400 quando o corpo não é JSON válido", async () => {
+    const resposta = await handler(evento("{isto nao e json"));
+    expect(resposta.statusCode).toBe(400);
+  });
+
+  it("responde 400 com os campos inválidos quando o schema rejeita a entrada", async () => {
+    const resposta = await handler(evento({ ...CORPO_VALIDO, casaId: "nao-e-um-ulid" }));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({
+      erro: "ENTRADA_INVALIDA",
+      detalhes: { campos: ["casaId"] },
+    });
+  });
+
+  it("responde 413 quando o corpo excede 1 KB, antes de validar o schema", async () => {
+    const corpoGrande = { ...CORPO_VALIDO, lixo: "x".repeat(2000) };
+
+    const resposta = await handler(evento(corpoGrande));
+
+    expect(resposta.statusCode).toBe(413);
+    expect(obterStatusCasa).not.toHaveBeenCalled();
   });
 });

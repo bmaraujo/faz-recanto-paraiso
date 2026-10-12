@@ -52,7 +52,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `packages/shared` — telefone (E.164) e mascaramento de e-mail | ⬜ Fase 2 (UC-A13/UC-P04/UC-P05) |
 | `backend` — workspace, esbuild, `GET /api/saude` | ✅ 6 testes |
 | `backend` — `GET /api/casas/{id}/disponibilidade`, `lib/db.ts`, `domain/`, DynamoDB Local | ✅ 7 testes unidade + 5 integração (UC-P02) |
-| `backend` — demais rotas de Fase 1 (`casas`, `config-publica`, `cotacao`) | ⬜ |
+| `backend` — `POST /api/cotacao` | ✅ 11 testes unidade + 4 integração (UC-P03) |
+| `backend` — demais rotas de Fase 1 (`casas`, `config-publica`) | ⬜ |
 | `infra/`, `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências

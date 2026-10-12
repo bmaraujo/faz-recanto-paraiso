@@ -10,6 +10,11 @@
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+// Nome próprio para esta suíte: os arquivos de test/integracao/ rodam em paralelo
+// (workers do Vitest) contra o mesmo DynamoDB Local, e `criarTabela`/`apagarTabela`
+// de suítes diferentes colidiriam numa tabela com nome compartilhado.
+process.env.TABELA = "recanto-paraiso-test-disponibilidade";
+
 import { handler } from "../../src/handlers/api-publica";
 import { chaveCasa, chaveOcupacao, clienteDynamoDB, documentoDb, nomeTabela } from "../../src/lib/db";
 import { apagarTabela, criarTabela } from "../esquema";

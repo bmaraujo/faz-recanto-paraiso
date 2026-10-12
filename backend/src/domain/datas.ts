@@ -3,4 +3,4 @@
  * `domain/disponibilidade.ts`: `handlers/` importa sempre de `../domain/*`, nunca
  * direto do pacote compartilhado.
  */
-export { formatarInstanteIso } from "@recanto/shared";
+export { formatarInstanteIso, hojeEmSaoPaulo } from "@recanto/shared";
