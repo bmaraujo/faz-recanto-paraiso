@@ -44,7 +44,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | Monorepo com npm workspaces, TypeScript `strict`, Vitest | ✅ |
 | `packages/shared` — aritmética de datas (`dominio/datas.ts`) | ✅ 44 testes |
 | `packages/shared` — cotação e validação de preços (`dominio/precos.ts`) | ✅ 48 testes (UC-P03) |
-| `packages/shared` — disponibilidade, schemas zod, formatação | ⬜ |
+| `packages/shared` — disponibilidade (`dominio/disponibilidade.ts`) | ✅ 27 testes (UC-P02) |
+| `packages/shared` — schemas zod, formatação | ⬜ |
 | `backend/`, `infra/`, `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências
