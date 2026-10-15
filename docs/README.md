@@ -119,6 +119,7 @@
 
 - [01 — Fases e critérios de aceite](./06-planejamento/01-fases-e-criterios-de-aceite.md)
 - [02 — Pendências do proprietário `[DEFINIR]`](./06-planejamento/02-pendencias-definir.md)
+- [03 — Progresso de implementação](./06-planejamento/03-progresso-de-implementacao.md) — o que já foi construído em código, commit a commit
 
 ## ADR — Decisões de arquitetura
 

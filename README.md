@@ -37,7 +37,9 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 ## Status
 
 **Fase atual: 1 — Vitrine (iniciada).** Veja o
-[plano de fases](./docs/06-planejamento/01-fases-e-criterios-de-aceite.md).
+[plano de fases](./docs/06-planejamento/01-fases-e-criterios-de-aceite.md) e o
+[progresso de implementação](./docs/06-planejamento/03-progresso-de-implementacao.md)
+(commit a commit, com as decisões tomadas pelo caminho).
 
 | Entrega | Situação |
 |---|---|
