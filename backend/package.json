@@ -15,10 +15,13 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1149.0",
     "@aws-sdk/lib-dynamodb": "^3.1149.0",
-    "@recanto/shared": "*"
+    "@recanto/shared": "*",
+    "aws-jwt-verify": "^5.2.1"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.152",
-    "esbuild": "^0.25.0"
+    "@types/jsonwebtoken": "^9.0.10",
+    "esbuild": "^0.25.0",
+    "jsonwebtoken": "^9.0.3"
   }
 }
