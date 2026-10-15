@@ -1,33 +1,49 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
-import type { ConfigPrecos } from "@recanto/shared";
+import type { ConfigGeral, ConfigPrecos } from "@recanto/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ItemOcupacao } from "../../../src/lib/db";
 import { criarEvento } from "../../evento-teste";
 
-const {
-  obterStatusCasa,
-  consultarOcupacoes,
-  obterConfigPrecos,
-  obterConfigGeralCotacao,
-} = vi.hoisted(() => ({
-  obterStatusCasa: vi.fn<(casaId: string) => Promise<string | undefined>>(),
-  consultarOcupacoes:
-    vi.fn<(casaId: string, de: string, ate: string) => Promise<ItemOcupacao[]>>(),
-  obterConfigPrecos: vi.fn<(casaId: string) => Promise<ConfigPrecos | undefined>>(),
-  obterConfigGeralCotacao: vi.fn<
-    () => Promise<{ antecedenciaMinimaDias: number; janelaReservaMeses: number }>
-  >(),
-}));
+const { obterStatusCasa, consultarOcupacoes, obterConfigPrecos, obterConfigGeral } = vi.hoisted(
+  () => ({
+    obterStatusCasa: vi.fn<(casaId: string) => Promise<string | undefined>>(),
+    consultarOcupacoes:
+      vi.fn<(casaId: string, de: string, ate: string) => Promise<ItemOcupacao[]>>(),
+    obterConfigPrecos: vi.fn<(casaId: string) => Promise<ConfigPrecos | undefined>>(),
+    obterConfigGeral: vi.fn<() => Promise<ConfigGeral>>(),
+  }),
+);
 
 vi.mock("../../../src/lib/db", () => ({
   obterStatusCasa,
   consultarOcupacoes,
   obterConfigPrecos,
-  obterConfigGeralCotacao,
+  obterConfigGeral,
 }));
 
 import { handler } from "../../../src/handlers/api-publica";
+
+const CONFIG_GERAL_PADRAO: ConfigGeral = {
+  nomeFazenda: "Recanto Paraíso",
+  whatsapp: "+5511999999999",
+  emailAdmin: "proprietario@exemplo.com.br",
+  emailRemetente: "reservas@exemplo.com.br",
+  emailResponder: "proprietario@exemplo.com.br",
+  prazoSolicitacaoHoras: 48,
+  antecedenciaMinimaDias: 1,
+  janelaReservaMeses: 12,
+  horarioCheckin: "14:00",
+  horarioCheckout: "12:00",
+  maxSolicitacoesPendentesPorEmail: 3,
+  faixasCancelamento: [{ diasMinimos: 30, percentualDevolucao: 100 }],
+  devolveTaxaLimpeza: true,
+  textoCancelamento: "...",
+  textoPrivacidade: "...",
+  textoTermos: "...",
+  textoRegrasGerais: "...",
+  faq: [],
+};
 
 describe("GET /api/saude", () => {
   const ENV_ORIGINAL = { ...process.env };
@@ -236,7 +252,7 @@ describe("POST /api/cotacao", () => {
   beforeEach(() => {
     obterStatusCasa.mockReset();
     obterConfigPrecos.mockReset();
-    obterConfigGeralCotacao.mockReset();
+    obterConfigGeral.mockReset();
     consultarOcupacoes.mockReset();
 
     // "hoje" fixo: calcularCotacao valida antecedência/janela contra a data real.
@@ -247,10 +263,7 @@ describe("POST /api/cotacao", () => {
 
     obterStatusCasa.mockResolvedValue("ATIVA");
     obterConfigPrecos.mockResolvedValue(CONFIG_PRECOS);
-    obterConfigGeralCotacao.mockResolvedValue({
-      antecedenciaMinimaDias: 1,
-      janelaReservaMeses: 12,
-    });
+    obterConfigGeral.mockResolvedValue(CONFIG_GERAL_PADRAO);
     consultarOcupacoes.mockResolvedValue([]);
   });
 
@@ -361,5 +374,63 @@ describe("POST /api/cotacao", () => {
 
     expect(resposta.statusCode).toBe(413);
     expect(obterStatusCasa).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/config-publica", () => {
+  beforeEach(() => {
+    obterConfigGeral.mockReset();
+  });
+
+  it("responde 200 só com os campos públicos de RN14 (UC-A13)", async () => {
+    obterConfigGeral.mockResolvedValue(CONFIG_GERAL_PADRAO);
+
+    const resposta = await handler(criarEvento("GET", "/api/config-publica"));
+    const corpo = JSON.parse(resposta.body as string) as Record<string, unknown>;
+
+    expect(resposta.statusCode).toBe(200);
+    expect(Object.keys(corpo).sort()).toEqual(
+      [
+        "antecedenciaMinimaDias",
+        "devolveTaxaLimpeza",
+        "faixasCancelamento",
+        "faq",
+        "horarioCheckin",
+        "horarioCheckout",
+        "janelaReservaMeses",
+        "nomeFazenda",
+        "textoCancelamento",
+        "textoPrivacidade",
+        "textoRegrasGerais",
+        "textoTermos",
+        "whatsapp",
+      ].sort(),
+    );
+  });
+
+  it("nunca inclui emailAdmin, emailRemetente, emailResponder, prazoSolicitacaoHoras ou maxSolicitacoesPendentesPorEmail", async () => {
+    obterConfigGeral.mockResolvedValue(CONFIG_GERAL_PADRAO);
+
+    const resposta = await handler(criarEvento("GET", "/api/config-publica"));
+    const corpo = JSON.parse(resposta.body as string) as Record<string, unknown>;
+
+    expect(corpo.emailAdmin).toBeUndefined();
+    expect(corpo.emailRemetente).toBeUndefined();
+    expect(corpo.emailResponder).toBeUndefined();
+    expect(corpo.prazoSolicitacaoHoras).toBeUndefined();
+    expect(corpo.maxSolicitacoesPendentesPorEmail).toBeUndefined();
+  });
+
+  it("responde com Cache-Control: public, max-age=300 (contrato técnico)", async () => {
+    obterConfigGeral.mockResolvedValue(CONFIG_GERAL_PADRAO);
+
+    const resposta = await handler(criarEvento("GET", "/api/config-publica"));
+
+    expect(resposta.headers).toMatchObject({ "cache-control": "public, max-age=300" });
+  });
+
+  it("responde 404 para o método errado na mesma rota", async () => {
+    const resposta = await handler(criarEvento("POST", "/api/config-publica"));
+    expect(resposta.statusCode).toBe(404);
   });
 });

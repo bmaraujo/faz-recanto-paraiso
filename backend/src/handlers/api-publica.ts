@@ -10,10 +10,10 @@
  *
  * - `GET /api/saude`                      — Fase 0
  * - `GET /api/casas/{id}/disponibilidade` — Fase 1
- * - `POST /api/cotacao`                   — Fase 1 (esta entrega)
+ * - `POST /api/cotacao`                   — Fase 1
+ * - `GET /api/config-publica`             — Fase 1 (esta entrega)
  * - `GET /api/casas`                      — Fase 1, a seguir
  * - `GET /api/casas/{slug}`               — Fase 1
- * - `GET /api/config-publica`             — Fase 1
  * - (demais rotas: Fase 2+)
  */
 
@@ -22,6 +22,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { entradaCotacaoPublicaSchema } from "@recanto/shared";
 
 import { formatarInstanteIso, hojeEmSaoPaulo } from "../domain/datas";
+import { projetarConfigGeralPublica } from "../domain/configGeral";
 import {
   ehErroConsultaDisponibilidade,
   listarNoitesOcupadas,
@@ -34,7 +35,7 @@ import { calcularCotacao, ehErroCotacao } from "../domain/precos";
 import { lerConfiguracaoAmbiente } from "../lib/config";
 import {
   consultarOcupacoes,
-  obterConfigGeralCotacao,
+  obterConfigGeral,
   obterConfigPrecos,
   obterStatusCasa,
   type ItemOcupacao,
@@ -64,6 +65,10 @@ export async function handler(
 
   if (metodo === "POST" && caminho === "/api/cotacao") {
     return respostaCotacao(evento);
+  }
+
+  if (metodo === "GET" && caminho === "/api/config-publica") {
+    return respostaConfigPublica();
   }
 
   return respostaErro(404, "NAO_ENCONTRADO", "Rota não encontrada.");
@@ -173,7 +178,7 @@ async function respostaCotacao(
   }
 
   const agora = new Date();
-  const configGeral = await obterConfigGeralCotacao();
+  const configGeral = await obterConfigGeral();
   const resultado = calcularCotacao(configPrecos, {
     checkin,
     checkout,
@@ -197,6 +202,18 @@ async function respostaCotacao(
     noitesIndisponiveis: disponibilidade.disponivel ? [] : disponibilidade.noitesIndisponiveis,
     estimativa: true,
     avisoEstimativa: "Valor estimado. O valor final é confirmado pelo proprietário.",
+  });
+}
+
+/**
+ * `GET /api/config-publica` (UC-A13, RN14): só os campos públicos de `CONFIG/GERAL`.
+ * Sem parâmetro, sem erro possível — sempre `200`, mesmo antes do admin configurar
+ * nada (`obterConfigGeral` devolve os padrões documentados ou o vazio do tipo).
+ */
+async function respostaConfigPublica(): Promise<APIGatewayProxyStructuredResultV2> {
+  const configGeral = await obterConfigGeral();
+  return respostaJson(200, projetarConfigGeralPublica(configGeral), {
+    "cache-control": "public, max-age=300",
   });
 }
 

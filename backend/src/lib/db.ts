@@ -13,7 +13,7 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
-import { configPrecosSchema, type ConfigPrecos } from "@recanto/shared";
+import { configPrecosSchema, type ConfigGeral, type ConfigPrecos } from "@recanto/shared";
 
 const NOME_TABELA_PADRAO = "recanto-paraiso-dev";
 
@@ -100,35 +100,50 @@ export async function obterConfigPrecos(casaId: string): Promise<ConfigPrecos | 
   return validado.data;
 }
 
-const ANTECEDENCIA_MINIMA_DIAS_PADRAO = 1;
-const JANELA_RESERVA_MESES_PADRAO = 12;
+/**
+ * Padrões de `CONFIG/GERAL` por campo, aplicados quando o item (ou o campo) ainda
+ * não existe no banco — `CONFIG/GERAL` não tem escrita alguma até UC-A13 (Fase 2),
+ * então hoje **todo** ambiente cai nestes valores.
+ *
+ * Só os quatro primeiros têm "padrão" de fato documentado (UC-A13). Os demais —
+ * identidade, contato, política de cancelamento, textos legais — não têm valor
+ * de sistema sensato (são conteúdo do proprietário, `[DEFINIR]` em
+ * docs/06-planejamento/02-pendencias-definir.md), e caem no vazio do próprio
+ * tipo (string vazia, array vazio, `false`) em vez de um valor inventado.
+ */
+const CONFIG_GERAL_PADRAO: ConfigGeral = {
+  prazoSolicitacaoHoras: 48,
+  antecedenciaMinimaDias: 1,
+  janelaReservaMeses: 12,
+  horarioCheckin: "14:00",
+  horarioCheckout: "12:00",
+  maxSolicitacoesPendentesPorEmail: 3,
+  nomeFazenda: "",
+  whatsapp: "",
+  emailAdmin: "",
+  emailRemetente: "",
+  emailResponder: "",
+  faixasCancelamento: [],
+  devolveTaxaLimpeza: false,
+  textoCancelamento: "",
+  textoPrivacidade: "",
+  textoTermos: "",
+  textoRegrasGerais: "",
+  faq: [],
+};
 
 /**
- * `GetItem CONFIG/GERAL`, projetado às duas únicas chaves que `calcularCotacao`
- * precisa (UC-P03). Os padrões são os documentados em UC-A13 — `CONFIG/GERAL`
- * ainda não tem escrita alguma (Fase 2), então na prática todo ambiente novo cai
- * nestes valores até o admin configurar o contrário.
+ * `GetItem CONFIG/GERAL`, sempre com todos os campos presentes — nunca `undefined`,
+ * mesmo que o item não exista ainda no banco. Fonte única dos padrões: tanto
+ * `GET /api/config-publica` (UC-A13, RN14) quanto `POST /api/cotacao` (UC-P03)
+ * leem daqui, cada um usando só os campos que precisa.
  */
-export async function obterConfigGeralCotacao(): Promise<{
-  antecedenciaMinimaDias: number;
-  janelaReservaMeses: number;
-}> {
+export async function obterConfigGeral(): Promise<ConfigGeral> {
   const resultado = await documentoDb.send(
-    new GetCommand({
-      TableName: nomeTabela(),
-      Key: { PK: "CONFIG", SK: "GERAL" },
-      ProjectionExpression: "antecedenciaMinimaDias, janelaReservaMeses",
-    }),
+    new GetCommand({ TableName: nomeTabela(), Key: { PK: "CONFIG", SK: "GERAL" } }),
   );
 
-  const item = resultado.Item as
-    | { antecedenciaMinimaDias?: number; janelaReservaMeses?: number }
-    | undefined;
-
-  return {
-    antecedenciaMinimaDias: item?.antecedenciaMinimaDias ?? ANTECEDENCIA_MINIMA_DIAS_PADRAO,
-    janelaReservaMeses: item?.janelaReservaMeses ?? JANELA_RESERVA_MESES_PADRAO,
-  };
+  return { ...CONFIG_GERAL_PADRAO, ...(resultado.Item as Partial<ConfigGeral> | undefined) };
 }
 
 /**

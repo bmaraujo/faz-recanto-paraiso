@@ -31,14 +31,17 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 9 | 2026-10-12 | 0 | — | Scaffold do workspace `backend/` + `GET /api/saude` | `4a90499` |
 | 10 | 2026-10-12 | 1 | UC-P02 | `GET /api/casas/{id}/disponibilidade` + `lib/db.ts` + `domain/` + regra de ESLint de camadas + DynamoDB Local (Docker Compose) | `9e567be` |
 | 11 | 2026-10-12 | 1 | UC-P03 | `POST /api/cotacao` — recalcula preço e disponibilidade no servidor | `3a0352a` |
+| 12 | 2026-10-14 | 0 | — | Registro de progresso (este arquivo) | `2b502c6` |
+| 13 | 2026-10-14 | 1 | UC-A13 | `GET /api/config-publica` — projeção pública de `CONFIG/GERAL` (RN14) + `obterConfigGeral` único em `lib/db.ts` (substitui `obterConfigGeralCotacao`) | _pendente_ |
 
-**Estado em `main` agora:** `ceed1b4` (merge do PR #6).
+**Estado em `main` agora:** `ceed1b4` (merge do PR #6). A entrega 13 está em branch própria,
+ainda não mergeada.
 
 ---
 
 ## O que existe hoje, por pacote
 
-### `packages/shared/` — 201 testes, 100% de cobertura em `dominio/`
+### `packages/shared/` — 205 testes, 100% de cobertura em `dominio/`
 
 | Módulo | Conteúdo |
 |---|---|
@@ -47,24 +50,25 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | `dominio/disponibilidade.ts` | `verificarDisponibilidade`, `listarNoitesOcupadas`, `noitesOcupadasEm`, `agruparNoitesContiguas`, `validarIntervaloConsulta` |
 | `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar (parte pura de UC-A02) |
 | `dominio/formato.ts` | `formatarMoeda`, `formatarValorPorNoite` |
+| `dominio/configGeral.ts` | Tipo `ConfigGeral` (forma do item completo) e `projetarConfigGeralPublica` — allowlist de RN14 (UC-A13). **Só forma**: a validação de escrita (RN1–RN16) nasce com a Fase 2 |
 | `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
 
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 25 testes de unidade + 9 de integração (DynamoDB Local)
+### `backend/` — 29 testes de unidade + 11 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
-| `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao` |
-| `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`) — nunca duplica lógica |
-| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeralCotacao`, `consultarOcupacoes` (paginada) |
+| `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao`, `GET /api/config-publica` |
+| `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`) — nunca duplica lógica |
+| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada) |
 | `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato |
-| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
+| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
 **Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`,
 `lib/auth.ts`, `lib/log.ts`, `lib/erros.ts`; as rotas `GET /api/casas`,
-`GET /api/casas/{slug}`, `GET /api/config-publica`; `handlers/api-admin.ts`,
+`GET /api/casas/{slug}`; `handlers/api-admin.ts`,
 `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`.
 
 ### `infra/`, `site/`
@@ -115,6 +119,20 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
 6. **`vi.useFakeTimers()` em teste que faz I/O real precisa de `{ toFake: ["Date"] }`**,
    nunca a forma sem argumento — o SDK da AWS depende de `setTimeout` internamente
    (retry, keep-alive), e fakear timers globais trava a chamada de verdade.
+7. **Campo de `ConfigGeral` sem padrão documentado cai no vazio do próprio tipo**
+   (`""`, `[]`, `false`), nunca num valor inventado. Só quatro campos têm "padrão"
+   de fato escrito em UC-A13 (`antecedenciaMinimaDias`, `janelaReservaMeses`,
+   `horarioCheckin`, `horarioCheckout`); o resto — identidade, contato, política de
+   cancelamento, textos legais — é conteúdo do proprietário, `[DEFINIR]` em
+   [02 — pendências](./02-pendencias-definir.md), e nenhum desses tem um "certo" de
+   sistema para supor.
+8. **Uma única `obterConfigGeral()` em `lib/db.ts`, não uma por consumidor.**
+   Existia um `obterConfigGeralCotacao()` que só projetava dois campos para
+   `POST /api/cotacao`; foi removido em favor de uma função que devolve o item
+   completo (com todos os padrões aplicados), e cada chamador pega os campos que
+   precisa. Duas funções de leitura da mesma configuração divergiriam nos padrões
+   com o tempo — o mesmo raciocínio de "uma função, duas fontes de dados" que já
+   vale para `calcularCotacao` entre navegador e servidor.
 
 ---
 
@@ -130,12 +148,17 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   [03 — API pública](../03-tecnico/03-api-publica.md) documenta as mesmas rotas como
   Lambdas vivas de Fase 1. Antes de implementar qualquer uma das duas, vale confirmar
   para que elas servem de fato nesse desenho (preview do admin antes de publicar? uso
-  interno da própria `publicar-conteudo`? redundância a remover?).
-- **`GET /api/config-publica`** está emaranhado com [UC-A13](../02-casos-de-uso/admin/UC-A13-configuracao-geral.md)
-  (Fase 2, escrita completa com versionamento e SES). A rota pública em si só precisa
-  do lado de leitura (um `GetItem` em `CONFIG/GERAL` + projeção para os campos
-  públicos, RN14) — decisão pendente é até que ponto definir o tipo `ConfigGeral`
-  completo agora vale a pena vs. esperar a Fase 2 definir o schema de escrita primeiro.
+  interno da própria `publicar-conteudo`? redundância a remover?). Além disso, ao
+  contrário das três rotas já construídas, estas exigem um tipo `Casa` completo
+  (nome, fotos, comodidades, descrição) que ainda não existe em `packages/shared` —
+  é a rota mais cara da lista que resta na Fase 1.
+
+### Resolvida nesta entrega
+
+~~`GET /api/config-publica` emaranhado com UC-A13~~ — resolvido construindo só o
+lado de leitura: `ConfigGeral` como tipo de forma (não o schema de validação de
+escrita, que é RN1–RN16 e nasce com a Fase 2) mais a projeção `projetarConfigGeralPublica`.
+Quando UC-A13 chegar, o tipo já existe e só ganha o schema zod de validação por cima.
 
 ## Comandos de referência
 
