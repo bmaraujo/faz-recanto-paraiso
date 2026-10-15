@@ -71,11 +71,12 @@ não construída (só precisa de `Query` na tabela, sem preço nem admin):
 | `handlers/api-publica.ts` — `GET /api/saude` | ✅ |
 | `handlers/api-publica.ts` — `GET /api/casas/{id}/disponibilidade` (UC-P02) | ✅ |
 | `handlers/api-publica.ts` — `POST /api/cotacao` (UC-P03) | ✅ |
+| `handlers/api-publica.ts` — `GET /api/config-publica` (UC-A13, RN14) | ✅ |
 | `lib/config.ts`, `lib/http.ts`, `lib/db.ts` | ✅ |
-| `domain/` (reexportado de `@recanto/shared`: `datas.ts`, `disponibilidade.ts`, `precos.ts`) | ✅ |
+| `domain/` (reexportado de `@recanto/shared`: `datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`) | ✅ |
 | ESLint com `eslint-plugin-import`/`no-restricted-paths` (raiz do repo, `eslint.config.mjs`) | ✅ — `domain/` não importa `lib/` nem o AWS SDK, verificado de verdade (não só documentado) |
-| `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre disponibilidade e cotação; os cenários de concorrência/transação entram com `POST /api/solicitacoes` |
+| `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre disponibilidade, cotação e config pública; os cenários de concorrência/transação entram com `POST /api/solicitacoes` |
 | `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`, `lib/auth.ts`, `lib/log.ts`, `lib/erros.ts` | ⬜ |
-| `handlers/api-publica.ts` — `GET /api/casas`, `GET /api/casas/{slug}`, `GET /api/config-publica` | ⬜ — próximas entregas da Fase 1 |
+| `handlers/api-publica.ts` — `GET /api/casas`, `GET /api/casas/{slug}` | ⬜ — próximas entregas da Fase 1 |
 | `handlers/api-admin.ts`, `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
 | `templates/` | ⬜ |

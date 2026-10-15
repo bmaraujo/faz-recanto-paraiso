@@ -51,12 +51,16 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `packages/shared` — schemas zod de preço, cotação e disponibilidade | ✅ 23 testes |
 | `packages/shared` — Casa (`dominio/casas.ts` + `comodidades.ts` + schema) | ✅ 19 testes (UC-A02, parte pura) |
 | `packages/shared` — formatação de moeda e instante ISO (`dominio/formato.ts`, `datas.ts`) | ✅ 14 testes (UC-P03) |
+| `packages/shared` — projeção pública da configuração geral (`dominio/configGeral.ts`) | ✅ 4 testes (UC-A13, RN14) |
 | `packages/shared` — telefone (E.164) e mascaramento de e-mail | ⬜ Fase 2 (UC-A13/UC-P04/UC-P05) |
 | `backend` — workspace, esbuild, `GET /api/saude` | ✅ 6 testes |
 | `backend` — `GET /api/casas/{id}/disponibilidade`, `lib/db.ts`, `domain/`, DynamoDB Local | ✅ 7 testes unidade + 5 integração (UC-P02) |
 | `backend` — `POST /api/cotacao` | ✅ 11 testes unidade + 4 integração (UC-P03) |
-| `backend` — demais rotas de Fase 1 (`casas`, `config-publica`) | ⬜ |
-| `infra/`, `site/` | ⬜ |
+| `backend` — `GET /api/config-publica` | ✅ 4 testes unidade + 2 integração (UC-A13) |
+| `backend` — demais rotas de Fase 1 (`GET /api/casas`, `GET /api/casas/{slug}`) | ⬜ — bloqueadas em `lib/auth.ts` e um tipo `Casa` completo |
+| `infra` — stacks `dados` (DynamoDB) e `auth` (Cognito, UC-A01) | ✅ 29 testes · ⚠️ ainda sem `cdk deploy` |
+| `infra` — `stack-backend`, `stack-frontend`, `stack-observabilidade` | ⬜ |
+| `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências
 [8.1 (domínio) e 8.4 (região)](./docs/06-planejamento/02-pendencias-definir.md).

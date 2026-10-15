@@ -31,14 +31,20 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 9 | 2026-10-12 | 0 | — | Scaffold do workspace `backend/` + `GET /api/saude` | `4a90499` |
 | 10 | 2026-10-12 | 1 | UC-P02 | `GET /api/casas/{id}/disponibilidade` + `lib/db.ts` + `domain/` + regra de ESLint de camadas + DynamoDB Local (Docker Compose) | `9e567be` |
 | 11 | 2026-10-12 | 1 | UC-P03 | `POST /api/cotacao` — recalcula preço e disponibilidade no servidor | `3a0352a` |
+| 12 | 2026-10-14 | 0 | — | Registro de progresso (este arquivo) | `2b502c6` |
+| 13 | 2026-10-14 | 1 | UC-A13 | `GET /api/config-publica` — projeção pública de `CONFIG/GERAL` (RN14) + `obterConfigGeral` único em `lib/db.ts` (substitui `obterConfigGeralCotacao`) | `fe41158` |
+| 14 | 2026-10-14 | 0 | UC-A01 | `infra/` nasce: stacks `dados` (DynamoDB + SSM) e `auth` (Cognito User Pool, App Client, domínio, grupo `admin`), com testes de infraestrutura (`aws-cdk-lib/assertions`) | _pendente_ |
 
-**Estado em `main` agora:** `ceed1b4` (merge do PR #6).
+**Estado em `main` agora:** `67ae205` (merge do PR #7, o registro de progresso).
+As entregas 13 e 14 estão em branches próprias, ainda não mergeadas — e a 14
+**ainda não tem `cdk deploy` executado**; só `cdk synth`/`cdk diff` (somente
+leitura) foram rodados contra a conta real `627010764306`.
 
 ---
 
 ## O que existe hoje, por pacote
 
-### `packages/shared/` — 201 testes, 100% de cobertura em `dominio/`
+### `packages/shared/` — 205 testes, 100% de cobertura em `dominio/`
 
 | Módulo | Conteúdo |
 |---|---|
@@ -47,31 +53,48 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | `dominio/disponibilidade.ts` | `verificarDisponibilidade`, `listarNoitesOcupadas`, `noitesOcupadasEm`, `agruparNoitesContiguas`, `validarIntervaloConsulta` |
 | `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar (parte pura de UC-A02) |
 | `dominio/formato.ts` | `formatarMoeda`, `formatarValorPorNoite` |
+| `dominio/configGeral.ts` | Tipo `ConfigGeral` (forma do item completo) e `projetarConfigGeralPublica` — allowlist de RN14 (UC-A13). **Só forma**: a validação de escrita (RN1–RN16) nasce com a Fase 2 |
 | `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
 
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 25 testes de unidade + 9 de integração (DynamoDB Local)
+### `backend/` — 29 testes de unidade + 11 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
-| `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao` |
-| `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`) — nunca duplica lógica |
-| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeralCotacao`, `consultarOcupacoes` (paginada) |
+| `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao`, `GET /api/config-publica` |
+| `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`) — nunca duplica lógica |
+| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada) |
 | `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato |
-| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
+| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
 **Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`,
 `lib/auth.ts`, `lib/log.ts`, `lib/erros.ts`; as rotas `GET /api/casas`,
-`GET /api/casas/{slug}`, `GET /api/config-publica`; `handlers/api-admin.ts`,
+`GET /api/casas/{slug}`; `handlers/api-admin.ts`,
 `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`.
 
-### `infra/`, `site/`
+### `infra/` — 29 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
-Nada implementado. O CDK depende da definição de domínio (pendência 8.1/8.2 — pode
-seguir com os endereços padrão da AWS) e só compensa nascer quando houver mais que
-uma Lambda para empacotar.
+| Stack | Conteúdo |
+|---|---|
+| `stack-dados` | Tabela única (`PK`/`SK`, GSI1, TTL, `PAY_PER_REQUEST`) + parâmetro SSM `site-url` |
+| `stack-auth` | Cognito User Pool (RN1–RN3), App Client (Authorization Code + PKCE, RN4, sem segredo), domínio Hosted UI, grupo `admin` |
+
+Config por stage em `config/dev.ts`/`config/prod.ts` (PITR, deletion protection,
+`RemovalPolicy` da tabela, `siteUrl` para os callbacks do Cognito). `siteUrl` de
+`dev` aponta para `localhost:4321` — não há `stack-frontend` (CloudFront) ainda para
+dar um domínio real.
+
+**Ainda não construído:** `stack-backend` (Lambdas, Function URLs, IAM,
+EventBridge), `stack-frontend` (S3, CloudFront, ACM), `stack-observabilidade`
+(alarmes, Budgets, SNS); `lib/auth.ts` no backend (o verificador de JWT que
+consome este User Pool); nenhum `cdk deploy` foi executado — só `synth`/`diff`
+(somente leitura).
+
+### `site/`
+
+Nada implementado.
 
 ---
 
@@ -115,6 +138,39 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
 6. **`vi.useFakeTimers()` em teste que faz I/O real precisa de `{ toFake: ["Date"] }`**,
    nunca a forma sem argumento — o SDK da AWS depende de `setTimeout` internamente
    (retry, keep-alive), e fakear timers globais trava a chamada de verdade.
+7. **Campo de `ConfigGeral` sem padrão documentado cai no vazio do próprio tipo**
+   (`""`, `[]`, `false`), nunca num valor inventado. Só quatro campos têm "padrão"
+   de fato escrito em UC-A13 (`antecedenciaMinimaDias`, `janelaReservaMeses`,
+   `horarioCheckin`, `horarioCheckout`); o resto — identidade, contato, política de
+   cancelamento, textos legais — é conteúdo do proprietário, `[DEFINIR]` em
+   [02 — pendências](./02-pendencias-definir.md), e nenhum desses tem um "certo" de
+   sistema para supor.
+8. **Uma única `obterConfigGeral()` em `lib/db.ts`, não uma por consumidor.**
+   Existia um `obterConfigGeralCotacao()` que só projetava dois campos para
+   `POST /api/cotacao`; foi removido em favor de uma função que devolve o item
+   completo (com todos os padrões aplicados), e cada chamador pega os campos que
+   precisa. Duas funções de leitura da mesma configuração divergiriam nos padrões
+   com o tempo — o mesmo raciocínio de "uma função, duas fontes de dados" que já
+   vale para `calcularCotacao` entre navegador e servidor.
+9. **`CDK_DEFAULT_REGION` não pode decidir a região de nenhuma stack deste
+   projeto.** O `cdk` CLI injeta essa variável a partir da região default do
+   perfil AWS local (`aws configure get region`), que pode legitimamente ser
+   `us-east-1` por preferência pessoal de quem está rodando — e nesse ambiente
+   era. Um primeiro `cdk diff` sintetizou e tentou comparar contra `us-east-1`
+   antes de isso ser percebido. Corrigido fixando `region: "sa-east-1"` (ADR-011)
+   sem fallback de ambiente, mais uma guarda `exigirRegiaoFixa(this.region)` no
+   construtor de cada stack que lança se algo reintroduzir a variável. Nenhum
+   recurso chegou a ser criado — o erro só afetava `diff`/`synth` (somente leitura).
+10. **CDK roda como Node puro, não por um bundler** — é o único pacote do
+    monorepo assim, porque o `cdk` CLI executa `node dist/bin/app.js`
+    diretamente. `tsconfig.build.json` usa resolução `NodeNext` só para
+    `infra/`, o que exige extensão `.js` explícita em todo import relativo do
+    pacote, mesmo apontando para um `.ts` — diferente do `Bundler` do resto do
+    repo.
+11. **`CDKMetadata` e `BootstrapVersion` saem do snapshot de infraestrutura.**
+    Mudam com a versão do `cdk` CLI, não com uma decisão nossa — deixá-los
+    dentro faria todo `npm update` de `aws-cdk`/`aws-cdk-lib` parecer uma
+    mudança de infraestrutura no diff do snapshot.
 
 ---
 
@@ -122,20 +178,45 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
 
 Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de continuar:
 
-- **`GET /api/casas` e `GET /api/casas/{slug}` têm uma tensão não resolvida**: o
-  [UC-P01](../02-casos-de-uso/publico/UC-P01-navegar-vitrine.md) descreve o site
-  público como **estático**, gerado em build a partir de `_dados/*.json` (produzido
-  pela Lambda `publicar-conteudo`, Fase 2) — "em tempo de execução, nenhuma chamada à
-  API é necessária para o conteúdo". Mas
-  [03 — API pública](../03-tecnico/03-api-publica.md) documenta as mesmas rotas como
-  Lambdas vivas de Fase 1. Antes de implementar qualquer uma das duas, vale confirmar
-  para que elas servem de fato nesse desenho (preview do admin antes de publicar? uso
-  interno da própria `publicar-conteudo`? redundância a remover?).
-- **`GET /api/config-publica`** está emaranhado com [UC-A13](../02-casos-de-uso/admin/UC-A13-configuracao-geral.md)
-  (Fase 2, escrita completa com versionamento e SES). A rota pública em si só precisa
-  do lado de leitura (um `GetItem` em `CONFIG/GERAL` + projeção para os campos
-  públicos, RN14) — decisão pendente é até que ponto definir o tipo `ConfigGeral`
-  completo agora vale a pena vs. esperar a Fase 2 definir o schema de escrita primeiro.
+- **Executar o primeiro `cdk deploy` de verdade.** Até agora só `synth`/`diff`
+  (somente leitura) rodaram contra a conta real `627010764306`. Criar o User
+  Pool e a tabela de `dev` é a próxima ação que efetivamente toca a nuvem —
+  pedir confirmação explícita antes, por ser a primeira vez neste projeto.
+- **Débito de documentação aberto pela correção do UC-P01** (ver "resolvida
+  nesta entrega" abaixo): `UC-A14`, [09 — Publicação de conteúdo](../03-tecnico/09-publicacao-de-conteudo.md)
+  e [11 — Frontend](../03-tecnico/11-frontend.md) ainda descrevem o site como
+  gerado estaticamente a partir de `_dados/*.json`. Precisam ser revisados para
+  refletir a API viva antes de `site/` nascer, senão quem implementar o
+  frontend parte de um desenho que já não é o decidido.
+- **`lib/auth.ts` do backend** (`exigirAdmin()`, UC-A01) ainda não existe —
+  é o que efetivamente consome o User Pool desta entrega. Testável contra um
+  JWKS/token de teste local, sem precisar do `cdk deploy` ter acontecido.
+- **UC-A02 (CRUD de casas) continua maior que as rotas já construídas**: exige
+  `lib/auth.ts` (acima), um tipo `Casa` completo (nome, fotos, comodidades,
+  descrição) que ainda não existe em `packages/shared`, e toca `TransactWriteItems`
+  (criação com unicidade de slug) e controle de versão otimista — mais próximo
+  em risco de `POST /api/solicitacoes` (Fase 2) do que das rotas de leitura já
+  feitas.
+
+### Resolvidas nesta entrega
+
+- ~~`GET /api/config-publica` emaranhado com UC-A13~~ — resolvido construindo só o
+  lado de leitura: `ConfigGeral` como tipo de forma (não o schema de validação de
+  escrita, que é RN1–RN16 e nasce com a Fase 2) mais a projeção `projetarConfigGeralPublica`.
+  Quando UC-A13 chegar, o tipo já existe e só ganha o schema zod de validação por cima.
+- ~~Tensão entre `GET /api/casas`/`GET /api/casas/{slug}` e o UC-P01 estático~~ —
+  decisão do proprietário: **o UC-P01 estava desatualizado**. O site consome a
+  API viva, não `_dados/*.json` gerado em build. Corrigido o trecho mais
+  enganoso do UC-P01 (E4 e o aviso que o acompanhava); o resto do documento e
+  os três outros afetados (`UC-A14`, 09, 11) ficam como débito — ver acima.
+- ~~UC-A01 com cabeçalho "Fase: 2"~~ — o plano mestre
+  ([01 — fases](./01-fases-e-criterios-de-aceite.md)) já listava UC-A01 dentro
+  do "Backoffice (mínimo)" da Fase 1; o cabeçalho do próprio UC-A01 e a tabela
+  em [02-casos-de-uso/README.md](../02-casos-de-uso/README.md) estavam
+  desalinhados com isso. Corrigidos os dois para "Fase 1".
+- ~~UC-A02 exige UC-A01, que exige infraestrutura real~~ — decisão do
+  proprietário: construir `infra/` (CDK) antes de continuar. Ver a entrega 14
+  na tabela e a seção `infra/` acima.
 
 ## Comandos de referência
 
@@ -146,4 +227,7 @@ npm run test:integracao -w backend  # sobe Docker, roda, derruba
 npm run typecheck                # tsc --noEmit, todos os workspaces
 npm run lint                     # eslint . (raiz)
 npm run build -w backend         # bundle esbuild das Lambdas
+npm run synth -w infra           # cdk synth --context stage=dev (local, sem AWS)
+npm run diff  -w infra           # cdk diff  --context stage=dev (AWS, somente leitura)
+npm run deploy:dev -w infra      # cdk deploy --context stage=dev --all (TOCA a nuvem)
 ```

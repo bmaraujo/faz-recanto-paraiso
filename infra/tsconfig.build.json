@@ -1,0 +1,14 @@
+// Único pacote do monorepo que roda como Node puro, sem bundler no meio (o cdk CLI
+// executa `node dist/bin/app.js` diretamente) - por isso "NodeNext", diferente do
+// "Bundler" do resto do repo. Consequência: todo import relativo em infra/ precisa
+// da extensão ".js" explícita no especificador, mesmo apontando para um ".ts".
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist"
+  },
+  "include": ["bin", "lib", "config"]
+}
