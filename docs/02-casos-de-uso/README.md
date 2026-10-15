@@ -59,7 +59,7 @@ A numeração é **estável**: um UC removido não tem seu número reaproveitado
 
 | ID | Título | Fase |
 |---|---|---|
-| [UC-A01](./admin/UC-A01-autenticar.md) | Autenticar no backoffice | 2 |
+| [UC-A01](./admin/UC-A01-autenticar.md) | Autenticar no backoffice | 1 |
 | [UC-A02](./admin/UC-A02-gerenciar-casas.md) | Cadastrar e editar casas | 1 |
 | [UC-A03](./admin/UC-A03-gerenciar-fotos.md) | Gerenciar fotos de uma casa | 1 |
 | [UC-A04](./admin/UC-A04-gerenciar-precos.md) | Configurar preços de uma casa | 1 |

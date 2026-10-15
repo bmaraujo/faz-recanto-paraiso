@@ -52,11 +52,22 @@ quantas pessoas cabem, quanto custa a partir de, e está disponível.
 | E1 | Slug inexistente | Página `404` com link para `/casas`; status HTTP **404** (não 200) |
 | E2 | Casa existe mas está `INATIVA` | `404`. Não revelar que existe |
 | E3 | Casa foi despublicada depois de indexada no Google | `404` com sugestão das outras casas |
-| E4 | `api-publica` indisponível | O conteúdo **continua visível** (é HTML estático). Só o calendário e a cotação mostram erro com botão de tentar novamente |
+| E4 | `api-publica` indisponível | Erro de carregamento da página, com botão de tentar novamente. O calendário e a cotação (que já dependem da API) mostram o mesmo tratamento |
 | E5 | Foto com `404` no S3 | Placeholder com a cor de fundo e o `alt`; não quebra o layout |
 
-> E4 é a razão principal de o conteúdo ser estático: a vitrine funciona mesmo com o
-> backend fora do ar.
+> ⚠️ **Correção de rumo (2026-10-14):** esta seção descrevia um site gerado
+> estaticamente no build, a partir de `_dados/*.json` publicados por
+> `publicar-conteudo` ([UC-A14](../admin/UC-A14-publicar-site.md)) — e por isso E4
+> dizia que o conteúdo sobrevivia à API fora do ar. **Essa não é mais a decisão
+> vigente**: o site consome `GET /api/casas`/`GET /api/casas/{slug}` como Lambda
+> viva, como já documentado em
+> [03 — API pública](../../03-tecnico/03-api-publica.md). A resiliência de E4
+> deixa de existir nesses termos. Isto **não foi propagado ainda** para
+> "Contrato técnico" (abaixo), `UC-A14`, [09 — Publicação de conteúdo](../../03-tecnico/09-publicacao-de-conteudo.md)
+> nem [11 — Frontend](../../03-tecnico/11-frontend.md), que ainda descrevem o
+> desenho estático — ver
+> [progresso de implementação](../../06-planejamento/03-progresso-de-implementacao.md)
+> para o estado dessa pendência de documentação.
 
 ## Regras de negócio
 

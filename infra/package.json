@@ -1,0 +1,24 @@
+{
+  "name": "@recanto/infra",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Infraestrutura AWS (CDK) do Recanto Paraiso",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "synth": "npm run build && cdk synth --context stage=dev",
+    "diff": "npm run build && cdk diff --context stage=dev",
+    "deploy:dev": "npm run build && cdk deploy --context stage=dev --all",
+    "deploy:prod": "npm run build && cdk deploy --context stage=prod --all --require-approval broadening"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.273.0",
+    "constructs": "^10.8.1"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.1145.0"
+  }
+}

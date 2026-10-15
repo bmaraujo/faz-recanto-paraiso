@@ -5,7 +5,7 @@
 | Ator | Administrador |
 | Pré-condições | Usuário criado no Cognito User Pool e pertencente ao grupo `admin` |
 | Gatilho | O admin acessa `/admin` sem sessão válida |
-| Fase | 2 |
+| Fase | 1 |
 | Relacionados | [08 — Auth](../../03-tecnico/08-autenticacao-e-autorizacao.md), [12 — Infra](../../03-tecnico/12-infraestrutura-cdk.md) |
 
 ## Objetivo de negócio
