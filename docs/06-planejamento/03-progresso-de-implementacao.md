@@ -33,12 +33,13 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 11 | 2026-10-12 | 1 | UC-P03 | `POST /api/cotacao` — recalcula preço e disponibilidade no servidor | `3a0352a` |
 | 12 | 2026-10-14 | 0 | — | Registro de progresso (este arquivo) | `2b502c6` |
 | 13 | 2026-10-14 | 1 | UC-A13 | `GET /api/config-publica` — projeção pública de `CONFIG/GERAL` (RN14) + `obterConfigGeral` único em `lib/db.ts` (substitui `obterConfigGeralCotacao`) | `fe41158` |
-| 14 | 2026-10-14 | 0 | UC-A01 | `infra/` nasce: stacks `dados` (DynamoDB + SSM) e `auth` (Cognito User Pool, App Client, domínio, grupo `admin`), com testes de infraestrutura (`aws-cdk-lib/assertions`) | _pendente_ |
+| 14 | 2026-10-14 | 0 | UC-A01 | `infra/` nasce: stacks `dados` (DynamoDB + SSM) e `auth` (Cognito User Pool, App Client, domínio, grupo `admin`), com testes de infraestrutura (`aws-cdk-lib/assertions`) | `7374dcc` |
+| 15 | 2026-10-14 | 1 | UC-A01 | `backend/src/lib/auth.ts` (`exigirAdmin`) + `lib/erros.ts` (`ErroHttp`) — verifica o JWT do Cognito, testado com JWKS de teste local via `cacheJwks` | _pendente_ |
 
-**Estado em `main` agora:** `67ae205` (merge do PR #7, o registro de progresso).
-As entregas 13 e 14 estão em branches próprias, ainda não mergeadas — e a 14
-**ainda não tem `cdk deploy` executado**; só `cdk synth`/`cdk diff` (somente
-leitura) foram rodados contra a conta real `627010764306`.
+**Estado em `main` agora:** `737b35e` (merge do PR #8, `infra/` + `GET /api/config-publica`).
+A entrega 15 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
+executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta real
+`627010764306`.
 
 ---
 
@@ -59,7 +60,7 @@ leitura) foram rodados contra a conta real `627010764306`.
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 29 testes de unidade + 11 de integração (DynamoDB Local)
+### `backend/` — 40 testes de unidade + 11 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
@@ -67,12 +68,13 @@ adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 | `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`) — nunca duplica lógica |
 | `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada) |
 | `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato |
+| `lib/auth.ts` (`exigirAdmin`, `criarVerificadorAdmin`) + `lib/erros.ts` (`ErroHttp`) | Verificação do JWT do Cognito (UC-A01) — `aws-jwt-verify`. Ainda não consumida por nenhum handler (`api-admin.ts` não existe) |
 | `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
 **Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`,
-`lib/auth.ts`, `lib/log.ts`, `lib/erros.ts`; as rotas `GET /api/casas`,
-`GET /api/casas/{slug}`; `handlers/api-admin.ts`,
-`cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`.
+`lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`; `handlers/api-admin.ts`
+(quem efetivamente chama `exigirAdmin`), `cron-diario.ts`, `cron-ical.ts`,
+`publicar-conteudo.ts`; `templates/`.
 
 ### `infra/` — 29 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
@@ -171,6 +173,27 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     Mudam com a versão do `cdk` CLI, não com uma decisão nossa — deixá-los
     dentro faria todo `npm update` de `aws-cdk`/`aws-cdk-lib` parecer uma
     mudança de infraestrutura no diff do snapshot.
+12. **`Identidade` do admin autenticado carrega só `sub`, não `email`.** O
+    pseudocódigo do UC-A01 sugere devolver os dois, mas o access token do
+    Cognito (o que o front manda em `Authorization: Bearer`) **não tem** claim
+    `email` — isso só existe no ID token. Como o único consumo documentado de
+    identidade é log por `sub` (UC-A02: "nenhum conteúdo, só `casaId`, ação e
+    `sub` do admin"), não há motivo para verificar o ID token também só por
+    isso.
+13. **`groups` não vai dentro de `CognitoJwtVerifier.create()`/`.verify()`,
+    mesmo a lib aceitando.** Passar `groups: ["admin"]` ali faz um JWT válido
+    sem o grupo falhar pelo **mesmo** caminho (mesma exceção) que um JWT
+    forjado — os dois caem no mesmo `catch`. Isso perderia a distinção `401`
+    (não autenticado) vs. `403` (autenticado, sem permissão) que o próprio
+    contrato técnico do UC-A01 exige (E2). `exigirAdmin` verifica a assinatura
+    primeiro, só depois confere `cognito:groups` manualmente.
+14. **Teste de `lib/auth.ts` sem Cognito real**: `aws-jwt-verify` expõe
+    `verificador.cacheJwks(jwks)` exatamente para isso — carrega um JWKS
+    (gerado de um par de chaves RSA criado no próprio teste,
+    `node:crypto.generateKeyPairSync`) no cache do verificador, e nenhuma
+    chamada de rede acontece. Tokens de teste assinados com `jsonwebtoken`
+    (devDependency). Mesmo princípio do DynamoDB Local: testar contra a
+    biblioteca real, não contra um mock dela.
 
 ---
 
@@ -188,15 +211,16 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   gerado estaticamente a partir de `_dados/*.json`. Precisam ser revisados para
   refletir a API viva antes de `site/` nascer, senão quem implementar o
   frontend parte de um desenho que já não é o decidido.
-- **`lib/auth.ts` do backend** (`exigirAdmin()`, UC-A01) ainda não existe —
-  é o que efetivamente consome o User Pool desta entrega. Testável contra um
-  JWKS/token de teste local, sem precisar do `cdk deploy` ter acontecido.
-- **UC-A02 (CRUD de casas) continua maior que as rotas já construídas**: exige
-  `lib/auth.ts` (acima), um tipo `Casa` completo (nome, fotos, comodidades,
-  descrição) que ainda não existe em `packages/shared`, e toca `TransactWriteItems`
-  (criação com unicidade de slug) e controle de versão otimista — mais próximo
-  em risco de `POST /api/solicitacoes` (Fase 2) do que das rotas de leitura já
-  feitas.
+- **`lib/auth.ts` existe, mas nenhum handler o usa ainda.** `exigirAdmin` está
+  pronto e testado; falta `handlers/api-admin.ts` (que não existe) chamá-lo em
+  toda rota de `/api/admin/*`, antes de qualquer leitura (RN8). Candidato
+  natural a vir junto da primeira rota de UC-A02.
+- **UC-A02 (CRUD de casas) continua maior que as rotas já construídas**: além
+  de `exigirAdmin` (resolvido nesta entrega), exige um tipo `Casa` completo
+  (nome, fotos, comodidades, descrição) que ainda não existe em
+  `packages/shared`, e toca `TransactWriteItems` (criação com unicidade de
+  slug) e controle de versão otimista — mais próximo em risco de
+  `POST /api/solicitacoes` (Fase 2) do que das rotas de leitura já feitas.
 
 ### Resolvidas nesta entrega
 
@@ -217,6 +241,9 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
 - ~~UC-A02 exige UC-A01, que exige infraestrutura real~~ — decisão do
   proprietário: construir `infra/` (CDK) antes de continuar. Ver a entrega 14
   na tabela e a seção `infra/` acima.
+- ~~`lib/auth.ts` do backend ainda não existe~~ — construído (entrega 15):
+  `exigirAdmin` verifica o JWT do Cognito do `stack-auth`, com a distinção
+  `401`/`403` correta (ver decisão 13) e testado sem Cognito real (decisão 14).
 
 ## Comandos de referência
 
