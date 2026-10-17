@@ -49,7 +49,7 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `packages/shared` — cotação e validação de preços (`dominio/precos.ts`) | ✅ 48 testes (UC-P03) |
 | `packages/shared` — disponibilidade (`dominio/disponibilidade.ts`) | ✅ 27 testes (UC-P02) |
 | `packages/shared` — schemas zod de preço, cotação e disponibilidade | ✅ 23 testes |
-| `packages/shared` — Casa (`dominio/casas.ts` + `comodidades.ts` + schema + tipo `Casa` completo) | ✅ 19 testes (UC-A02) |
+| `packages/shared` — Casa (`dominio/casas.ts` + `comodidades.ts` + schema + tipo `Casa` completo + `ehEdicaoDeSlugPermitida`) | ✅ 23 testes (UC-A02) |
 | `packages/shared` — formatação de moeda e instante ISO (`dominio/formato.ts`, `datas.ts`) | ✅ 14 testes (UC-P03) |
 | `packages/shared` — projeção pública da configuração geral (`dominio/configGeral.ts`) | ✅ 4 testes (UC-A13, RN14) |
 | `packages/shared` — telefone (E.164) e mascaramento de e-mail | ⬜ Fase 2 (UC-A13/UC-P04/UC-P05) |
@@ -59,8 +59,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `backend` — `GET /api/config-publica` | ✅ 4 testes unidade + 2 integração (UC-A13) |
 | `backend` — `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` | ✅ 11 testes unidade (JWKS de teste local, sem Cognito real) |
 | `backend` — demais rotas de Fase 1 (`GET /api/casas`, `GET /api/casas/{slug}`) | ⬜ — próxima entrega sem bloqueio |
-| `backend` — `POST /api/admin/casas` (UC-A02, `api-admin.ts`) | ✅ 11 testes unidade + 3 integração (unicidade de slug sob concorrência real) |
-| `backend` — demais rotas de UC-A02 (`GET`/`PUT`/`DELETE /api/admin/casas{,/{casaId}}`) | ⬜ — `PUT` traz o controle de versão otimista (E9) |
+| `backend` — `POST`/`PUT /api/admin/casas{,/{casaId}}` (UC-A02, `api-admin.ts`) | ✅ 20 testes unidade + 8 integração (unicidade de slug e versão sob concorrência real) |
+| `backend` — demais rotas de UC-A02 (`GET /api/admin/casas{,/{casaId}}`, `POST .../status`, `DELETE .../{casaId}`) | ⬜ |
 | `infra` — stacks `dados` (DynamoDB) e `auth` (Cognito, UC-A01) | ✅ 29 testes · ⚠️ ainda sem `cdk deploy` |
 | `infra` — `stack-backend`, `stack-frontend`, `stack-observabilidade` | ⬜ |
 | `site/` | ⬜ |

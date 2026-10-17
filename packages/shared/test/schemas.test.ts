@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   alterarStatusCasaSchema,
+  casaArmazenadaSchema,
   casaEdicaoSchema,
   casaEntradaSchema,
   configPrecosSchema,
@@ -459,5 +460,71 @@ describe("alterarStatusCasaSchema", () => {
 
   it("rejeita valor fora do enum", () => {
     expect(alterarStatusCasaSchema.safeParse({ status: "PUBLICADA" }).success).toBe(false);
+  });
+});
+
+describe("casaArmazenadaSchema", () => {
+  const CASA_ARMAZENADA_VALIDA = {
+    nome: "Casa do Lago",
+    slug: "casa-do-lago",
+    resumo: "Casa de madeira à beira do lago, para até 8 pessoas.",
+    descricao:
+      "## Sobre a casa\n\nUma casa de madeira espaçosa, com varanda de frente para o lago.",
+    status: "ATIVA",
+    ordem: 10,
+    destaque: false,
+    capacidadeMaxima: 8,
+    hospedesInclusos: 6,
+    quartos: 3,
+    banheiros: 2,
+    camas: [],
+    comodidades: [],
+    localizacao: { enderecoPublico: "Zona rural, Município X - UF" },
+    casaId: ULID_VALIDO,
+    fotos: [],
+    tokenIcal: "token-de-teste",
+    publicacaoPendente: false,
+    versao: 0,
+    criadoEm: "2026-10-17T12:00:00-03:00",
+    atualizadoEm: "2026-10-17T12:00:00-03:00",
+    atualizadoPor: ULID_VALIDO,
+  };
+
+  it("aceita o item completo como persistido", () => {
+    expect(casaArmazenadaSchema.safeParse(CASA_ARMAZENADA_VALIDA).success).toBe(true);
+  });
+
+  it("aceita com fotos preenchidas", () => {
+    const comFoto = {
+      ...CASA_ARMAZENADA_VALIDA,
+      fotos: [
+        {
+          fotoId: ULID_VALIDO,
+          chave: "midia/casas/01HQ.../fachada.webp",
+          largura: 1600,
+          altura: 1067,
+          bytes: 184_320,
+          legenda: "Fachada",
+          textoAlternativo: "Casa de madeira vista do lago",
+          ordem: 10,
+          principal: true,
+          enviadaEm: "2026-10-11T18:04:00-03:00",
+        },
+      ],
+    };
+    expect(casaArmazenadaSchema.safeParse(comFoto).success).toBe(true);
+  });
+
+  it("rejeita sem os campos que só existem depois de criada", () => {
+    const { casaId: _c, tokenIcal: _t, versao: _v, ...semCamposPersistidos } = CASA_ARMAZENADA_VALIDA;
+    expect(casaArmazenadaSchema.safeParse(semCamposPersistidos).success).toBe(false);
+  });
+
+  it("rejeita foto com formato inválido", () => {
+    const comFotoInvalida = {
+      ...CASA_ARMAZENADA_VALIDA,
+      fotos: [{ fotoId: "não-é-ulid", chave: "x", principal: true }],
+    };
+    expect(casaArmazenadaSchema.safeParse(comFotoInvalida).success).toBe(false);
   });
 });

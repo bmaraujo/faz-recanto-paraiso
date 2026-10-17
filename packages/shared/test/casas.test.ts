@@ -4,6 +4,7 @@ import {
   type FotoParaCompletude,
   SLUG_REGEX,
   avaliarCompletudeParaAtivar,
+  ehEdicaoDeSlugPermitida,
   ehUrlDeMapaPermitida,
   sugerirSlug,
 } from "../src/dominio/casas";
@@ -96,6 +97,26 @@ describe("sugerirSlug", () => {
       const slug = sugerirSlug(nome);
       if (slug !== "") expect(slug).toMatch(SLUG_REGEX);
     }
+  });
+});
+
+describe("ehEdicaoDeSlugPermitida (RN4)", () => {
+  it("permite manter o mesmo slug, em qualquer status", () => {
+    expect(ehEdicaoDeSlugPermitida("ATIVA", "casa-do-lago", "casa-do-lago")).toBe(true);
+    expect(ehEdicaoDeSlugPermitida("INATIVA", "casa-do-lago", "casa-do-lago")).toBe(true);
+    expect(ehEdicaoDeSlugPermitida("RASCUNHO", "casa-do-lago", "casa-do-lago")).toBe(true);
+  });
+
+  it("18. casa em RASCUNHO pode mudar de slug", () => {
+    expect(ehEdicaoDeSlugPermitida("RASCUNHO", "casa-do-lago", "casa-nova")).toBe(true);
+  });
+
+  it("17. casa ATIVA não pode mudar de slug", () => {
+    expect(ehEdicaoDeSlugPermitida("ATIVA", "casa-do-lago", "casa-nova")).toBe(false);
+  });
+
+  it("casa INATIVA também não pode mudar de slug — já pode ter sido publicada", () => {
+    expect(ehEdicaoDeSlugPermitida("INATIVA", "casa-do-lago", "casa-nova")).toBe(false);
   });
 });
 
