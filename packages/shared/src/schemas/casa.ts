@@ -23,9 +23,9 @@
 import { z } from "zod";
 
 import { comodidadeSchema } from "../comodidades";
-import { SLUG_REGEX, ehUrlDeMapaPermitida, tipoCamaSchema } from "../dominio/casas";
+import { ESTADOS_CASA, SLUG_REGEX, ehUrlDeMapaPermitida, tipoCamaSchema } from "../dominio/casas";
 
-export const statusCasaSchema = z.enum(["RASCUNHO", "ATIVA", "INATIVA"]);
+export const statusCasaSchema = z.enum(ESTADOS_CASA);
 
 export const camaSchema = z.object({
   tipo: tipoCamaSchema,
