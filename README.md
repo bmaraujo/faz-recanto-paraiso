@@ -59,8 +59,7 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `backend` — `GET /api/config-publica` | ✅ 4 testes unidade + 2 integração (UC-A13) |
 | `backend` — `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` | ✅ 11 testes unidade (JWKS de teste local, sem Cognito real) |
 | `backend` — demais rotas de Fase 1 (`GET /api/casas`, `GET /api/casas/{slug}`) | ⬜ — próxima entrega sem bloqueio |
-| `backend` — `POST`/`PUT`/`GET /api/admin/casas{,/{casaId}}` + `POST .../status` (UC-A02, `api-admin.ts`) | ✅ 33 testes unidade + 15 integração (unicidade de slug e versão sob concorrência real) |
-| `backend` — `DELETE /api/admin/casas/{casaId}` (UC-A02, RN14) | ⬜ — única rota que falta no CRUD de casas |
+| `backend` — CRUD completo de casas: `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}` + `POST .../status` (UC-A02, `api-admin.ts`) | ✅ 36 testes unidade + 19 integração (concorrência real: slug, versão, ocupação) |
 | `infra` — stacks `dados` (DynamoDB) e `auth` (Cognito, UC-A01) | ✅ 29 testes · ⚠️ ainda sem `cdk deploy` |
 | `infra` — `stack-backend`, `stack-frontend`, `stack-observabilidade` | ⬜ |
 | `site/` | ⬜ |

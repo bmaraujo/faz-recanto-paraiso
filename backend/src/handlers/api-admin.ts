@@ -10,8 +10,9 @@
  * - `POST /api/admin/casas` — UC-A02
  * - `PUT /api/admin/casas/{casaId}` — UC-A02
  * - `POST /api/admin/casas/{casaId}/status` — UC-A02
- * - `GET /api/admin/casas`, `GET /api/admin/casas/{casaId}` — UC-A02 (esta entrega)
- * - (demais rotas de UC-A02 e dos outros UCs de backoffice: a seguir)
+ * - `GET /api/admin/casas`, `GET /api/admin/casas/{casaId}` — UC-A02
+ * - `DELETE /api/admin/casas/{casaId}` — UC-A02 (esta entrega, fecha o CRUD)
+ * - (demais rotas de outros UCs de backoffice: a seguir)
  */
 
 import { randomBytes } from "node:crypto";
@@ -27,13 +28,15 @@ import {
 } from "@recanto/shared";
 
 import { avaliarCompletudeParaAtivar, ehEdicaoDeSlugPermitida } from "../domain/casas";
-import { formatarInstanteIso } from "../domain/datas";
+import { formatarInstanteIso, hojeEmSaoPaulo } from "../domain/datas";
 import { validarConfigPrecos } from "../domain/precos";
 import { criarVerificadorAdmin, exigirAdmin, type Identidade, type VerificadorAdmin } from "../lib/auth";
 import {
   alterarStatusCasa,
   atualizarCasa,
   criarCasa,
+  excluirCasa,
+  existeOcupacaoFutura,
   listarCasas,
   obterCasa,
   obterConfigPrecos,
@@ -88,12 +91,15 @@ export async function handler(
       return await alterarStatusCasaHandler(evento, casaId, identidade);
     }
 
-    const casaMatch = metodo === "PUT" || metodo === "GET" ? ROTA_CASA_POR_ID.exec(caminho) : null;
+    const casaMatch =
+      metodo === "PUT" || metodo === "GET" || metodo === "DELETE"
+        ? ROTA_CASA_POR_ID.exec(caminho)
+        : null;
     if (casaMatch !== null) {
       const casaId = casaMatch[1] as string;
-      return metodo === "PUT"
-        ? await atualizarCasaHandler(evento, casaId, identidade)
-        : await obterCasaHandler(casaId);
+      if (metodo === "PUT") return await atualizarCasaHandler(evento, casaId, identidade);
+      if (metodo === "GET") return await obterCasaHandler(casaId);
+      return await excluirCasaHandler(casaId);
     }
 
     return respostaErro(404, "NAO_ENCONTRADO", "Rota não encontrada.");
@@ -360,4 +366,34 @@ async function obterCasaHandler(casaId: string): Promise<APIGatewayProxyStructur
     return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
   }
   return respostaJson(200, casa);
+}
+
+/**
+ * `DELETE /api/admin/casas/{casaId}` (UC-A02, RN14): fecha o CRUD.
+ *
+ * RN14/E5: casa com ocupação futura (reserva, bloqueio ou importação de
+ * iCal — tudo que vive em `OCUPACAO#<casaId>`) não pode ser excluída,
+ * `409 CASA_COM_RESERVAS`. `existeOcupacaoFutura` é uma verificação real,
+ * não um placeholder: nenhum desses UCs escreve `OCUPACAO#` ainda, então
+ * hoje ela sempre devolve `false` — mas quando UC-P04/bloqueios nascerem,
+ * esta rota já respeita RN14 sem precisar de mudança nenhuma aqui.
+ */
+async function excluirCasaHandler(casaId: string): Promise<APIGatewayProxyStructuredResultV2> {
+  const casaExistente = await obterCasa(casaId);
+  if (casaExistente === undefined) {
+    return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
+  }
+
+  const temOcupacaoFutura = await existeOcupacaoFutura(casaId, hojeEmSaoPaulo(new Date()));
+  if (temOcupacaoFutura) {
+    return respostaErro(
+      409,
+      "CASA_COM_RESERVAS",
+      "Esta casa tem reservas ou bloqueios ativos. Desative-a em vez de excluir.",
+    );
+  }
+
+  await excluirCasa(casaExistente);
+
+  return respostaJson(200, { casaId });
 }

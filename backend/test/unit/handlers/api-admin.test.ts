@@ -15,6 +15,8 @@ const {
   obterConfigPrecos,
   alterarStatusCasa,
   listarCasas,
+  excluirCasa,
+  existeOcupacaoFutura,
 } = vi.hoisted(() => ({
   exigirAdmin: vi.fn<(evento: APIGatewayProxyEventV2, verificador: unknown) => Promise<Identidade>>(),
   criarVerificadorAdmin: vi.fn(() => ({})),
@@ -25,6 +27,8 @@ const {
   alterarStatusCasa:
     vi.fn<(casaId: string, status: StatusCasa, atualizadoPor: string, agora: string) => Promise<void>>(),
   listarCasas: vi.fn<() => Promise<Casa[]>>(),
+  excluirCasa: vi.fn<(casa: Pick<Casa, "casaId" | "slug">) => Promise<void>>(),
+  existeOcupacaoFutura: vi.fn<(casaId: string, deInclusive: string) => Promise<boolean>>(),
 }));
 
 vi.mock("../../../src/lib/auth", () => ({ exigirAdmin, criarVerificadorAdmin }));
@@ -35,6 +39,8 @@ vi.mock("../../../src/lib/db", () => ({
   atualizarCasa,
   obterConfigPrecos,
   alterarStatusCasa,
+  excluirCasa,
+  existeOcupacaoFutura,
 }));
 
 import { handler } from "../../../src/handlers/api-admin";
@@ -133,6 +139,12 @@ function eventoGet(caminho: string): APIGatewayProxyEventV2 {
   return criarEvento("GET", caminho, { headers: { authorization: "Bearer token-de-teste" } });
 }
 
+function eventoDelete(casaId: string): APIGatewayProxyEventV2 {
+  return criarEvento("DELETE", `/api/admin/casas/${casaId}`, {
+    headers: { authorization: "Bearer token-de-teste" },
+  });
+}
+
 beforeEach(() => {
   exigirAdmin.mockReset();
   criarCasa.mockReset();
@@ -141,6 +153,8 @@ beforeEach(() => {
   obterConfigPrecos.mockReset();
   alterarStatusCasa.mockReset();
   listarCasas.mockReset();
+  excluirCasa.mockReset();
+  existeOcupacaoFutura.mockReset();
   exigirAdmin.mockResolvedValue(ADMIN);
   criarCasa.mockResolvedValue(undefined);
   obterCasa.mockResolvedValue(CASA_EXISTENTE);
@@ -148,6 +162,8 @@ beforeEach(() => {
   obterConfigPrecos.mockResolvedValue(PRECOS_VALIDOS);
   alterarStatusCasa.mockResolvedValue(undefined);
   listarCasas.mockResolvedValue([]);
+  excluirCasa.mockResolvedValue(undefined);
+  existeOcupacaoFutura.mockResolvedValue(false);
 });
 
 describe("autenticação (RN8)", () => {
@@ -507,5 +523,36 @@ describe("GET /api/admin/casas/{casaId} (UC-A02, detalhe)", () => {
     const resposta = await handler(eventoGet(`/api/admin/casas/${CASA_ID}`));
 
     expect(resposta.statusCode).toBe(404);
+  });
+});
+
+describe("DELETE /api/admin/casas/{casaId} (UC-A02, RN14)", () => {
+  it("16. exclui casa sem ocupação futura e responde 200", async () => {
+    const resposta = await handler(eventoDelete(CASA_ID));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(existeOcupacaoFutura).toHaveBeenCalledWith(CASA_ID, expect.any(String));
+    expect(excluirCasa).toHaveBeenCalledWith(CASA_EXISTENTE);
+    expect(JSON.parse(resposta.body as string)).toEqual({ casaId: CASA_ID });
+  });
+
+  it("15. exclui casa com reserva confirmada → 409 CASA_COM_RESERVAS, sem apagar", async () => {
+    existeOcupacaoFutura.mockResolvedValue(true);
+
+    const resposta = await handler(eventoDelete(CASA_ID));
+
+    expect(resposta.statusCode).toBe(409);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "CASA_COM_RESERVAS" });
+    expect(excluirCasa).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a casa não existe", async () => {
+    obterCasa.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoDelete(CASA_ID));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(existeOcupacaoFutura).not.toHaveBeenCalled();
+    expect(excluirCasa).not.toHaveBeenCalled();
   });
 });

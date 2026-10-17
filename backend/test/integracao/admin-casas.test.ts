@@ -10,7 +10,7 @@
  * do JWT já tem cobertura própria e real em `test/unit/lib/auth.test.ts`
  * (via `cacheJwks`) — este arquivo testa a transação, não a autenticação.
  */
-import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import type { Identidade } from "../../src/lib/auth";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,7 +24,7 @@ const { exigirAdmin, criarVerificadorAdmin } = vi.hoisted(() => ({
 vi.mock("../../src/lib/auth", () => ({ exigirAdmin, criarVerificadorAdmin }));
 
 import { handler } from "../../src/handlers/api-admin";
-import { chaveSlug, clienteDynamoDB, documentoDb, nomeTabela } from "../../src/lib/db";
+import { chaveOcupacao, chaveSlug, clienteDynamoDB, documentoDb, nomeTabela } from "../../src/lib/db";
 import { apagarTabela, criarTabela } from "../esquema";
 import { criarEvento } from "../evento-teste";
 
@@ -87,6 +87,14 @@ function listarCasasViaHandler() {
 function obterCasaViaHandler(casaId: string) {
   return handler(
     criarEvento("GET", `/api/admin/casas/${casaId}`, {
+      headers: { authorization: "Bearer token-de-teste" },
+    }),
+  );
+}
+
+function excluirCasaViaHandler(casaId: string) {
+  return handler(
+    criarEvento("DELETE", `/api/admin/casas/${casaId}`, {
       headers: { authorization: "Bearer token-de-teste" },
     }),
   );
@@ -491,6 +499,92 @@ describe("GET /api/admin/casas{,/{casaId}} (integração)", () => {
 
   it("GET /{casaId} de uma casa inexistente responde 404", async () => {
     const resposta = await obterCasaViaHandler("01HQNAOEXISTENTE000000001");
+    expect(resposta.statusCode).toBe(404);
+  });
+});
+
+describe("DELETE /api/admin/casas/{casaId} (integração)", () => {
+  beforeAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+    await criarTabela(clienteDynamoDB, TABELA);
+  });
+
+  afterAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+  });
+
+  beforeEach(() => {
+    exigirAdmin.mockReset();
+    exigirAdmin.mockResolvedValue(ADMIN);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("16: exclui a casa, os preços e o índice de slug de verdade", async () => {
+    const criada = await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-para-excluir" });
+    const { casaId } = JSON.parse(criada.body as string) as { casaId: string };
+
+    const resposta = await excluirCasaViaHandler(casaId);
+    expect(resposta.statusCode).toBe(200);
+
+    const casa = await documentoDb.send(
+      new GetCommand({ TableName: TABELA, Key: { PK: `CASA#${casaId}`, SK: "META" } }),
+    );
+    expect(casa.Item).toBeUndefined();
+
+    const precos = await documentoDb.send(
+      new GetCommand({ TableName: TABELA, Key: { PK: `CASA#${casaId}`, SK: "PRECOS" } }),
+    );
+    expect(precos.Item).toBeUndefined();
+
+    const slug = await documentoDb.send(
+      new GetCommand({ TableName: TABELA, Key: chaveSlug("casa-para-excluir") }),
+    );
+    expect(slug.Item).toBeUndefined();
+  });
+
+  it("15/E5: casa com ocupação futura real não é excluída — 409, nada apagado", async () => {
+    const criada = await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-com-ocupacao" });
+    const { casaId } = JSON.parse(criada.body as string) as { casaId: string };
+
+    await documentoDb.send(
+      new PutCommand({
+        TableName: TABELA,
+        Item: { ...chaveOcupacao(casaId, "2026-12-24"), casaId, data: "2026-12-24", tipo: "RESERVA" },
+      }),
+    );
+
+    const resposta = await excluirCasaViaHandler(casaId);
+    expect(resposta.statusCode).toBe(409);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "CASA_COM_RESERVAS" });
+
+    const casa = await documentoDb.send(
+      new GetCommand({ TableName: TABELA, Key: { PK: `CASA#${casaId}`, SK: "META" } }),
+    );
+    expect(casa.Item).toBeDefined();
+  });
+
+  it("ocupação só no passado não bloqueia a exclusão (RN14 é sobre ocupação futura)", async () => {
+    const criada = await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-com-ocupacao-passada" });
+    const { casaId } = JSON.parse(criada.body as string) as { casaId: string };
+
+    await documentoDb.send(
+      new PutCommand({
+        TableName: TABELA,
+        Item: { ...chaveOcupacao(casaId, "2020-01-01"), casaId, data: "2020-01-01", tipo: "RESERVA" },
+      }),
+    );
+
+    const resposta = await excluirCasaViaHandler(casaId);
+    expect(resposta.statusCode).toBe(200);
+  });
+
+  it("DELETE de casa inexistente responde 404", async () => {
+    const resposta = await excluirCasaViaHandler("01HQNAOEXISTENTE000000002");
     expect(resposta.statusCode).toBe(404);
   });
 });
