@@ -36,10 +36,11 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 14 | 2026-10-14 | 0 | UC-A01 | `infra/` nasce: stacks `dados` (DynamoDB + SSM) e `auth` (Cognito User Pool, App Client, domínio, grupo `admin`), com testes de infraestrutura (`aws-cdk-lib/assertions`) | `7374dcc` |
 | 15 | 2026-10-14 | 1 | UC-A01 | `backend/src/lib/auth.ts` (`exigirAdmin`) + `lib/erros.ts` (`ErroHttp`) — verifica o JWT do Cognito, testado com JWKS de teste local via `cacheJwks` | `70bc948` |
 | 16 | 2026-10-17 | 1 | UC-A02 | Tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`) em `dominio/casas.ts`; `ESTADOS_CASA` extraído como fonte única do enum, compartilhado com `statusCasaSchema` | `a60bc95` |
-| 17 | 2026-10-17 | 1 | UC-A02 | `POST /api/admin/casas` — `handlers/api-admin.ts` nasce; `lib/db.ts#criarCasa` (transação com unicidade de slug, RN3); `decodificarCorpo` movido para `lib/http.ts`, compartilhado com `api-publica.ts` | _pendente_ |
+| 17 | 2026-10-17 | 1 | UC-A02 | `POST /api/admin/casas` — `handlers/api-admin.ts` nasce; `lib/db.ts#criarCasa` (transação com unicidade de slug, RN3); `decodificarCorpo` movido para `lib/http.ts`, compartilhado com `api-publica.ts` | `b17ca47` |
+| 18 | 2026-10-17 | 1 | UC-A02 | `PUT /api/admin/casas/{casaId}` (E9, RN4) — `lib/db.ts#obterCasa`/`atualizarCasa`; `ehEdicaoDeSlugPermitida` (RN4) em `dominio/casas.ts`; `casaArmazenadaSchema`/`fotoSchema` validam a forma na leitura | _pendente_ |
 
-**Estado em `main` agora:** `ba02f10` (merge do PR #10, tipo `Casa` completo).
-A entrega 17 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
+**Estado em `main` agora:** `e7a2cfa` (merge do PR #11, `POST /api/admin/casas`).
+A entrega 18 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
 executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta real
 `627010764306`.
 
@@ -47,38 +48,37 @@ executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a cont
 
 ## O que existe hoje, por pacote
 
-### `packages/shared/` — 205 testes, 100% de cobertura em `dominio/`
+### `packages/shared/` — 213 testes, 100% de cobertura em `dominio/`
 
 | Módulo | Conteúdo |
 |---|---|
 | `dominio/datas.ts` | Aritmética de datas em `America/Sao_Paulo`: `noitesDe`, `noitesDePeriodoInclusivo`, `dtEndDeCheckout`, `hojeEmSaoPaulo`, `formatarDataPtBr`, `formatarInstanteIso` (ISO 8601 **com offset**, não `toISOString()`) |
 | `dominio/precos.ts` | `calcularCotacao` (a mesma função do navegador e do servidor), `validarConfigPrecos` |
 | `dominio/disponibilidade.ts` | `verificarDisponibilidade`, `listarNoitesOcupadas`, `noitesOcupadasEm`, `agruparNoitesContiguas`, `validarIntervaloConsulta` |
-| `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar (parte pura de UC-A02); tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`/`ESTADOS_CASA`) — a forma do item `CASA#<id>/META` persistido |
+| `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar, `ehEdicaoDeSlugPermitida` (RN4) — parte pura de UC-A02; tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`/`ESTADOS_CASA`) — a forma do item `CASA#<id>/META` persistido |
 | `dominio/formato.ts` | `formatarMoeda`, `formatarValorPorNoite` |
 | `dominio/configGeral.ts` | Tipo `ConfigGeral` (forma do item completo) e `projetarConfigGeralPublica` — allowlist de RN14 (UC-A13). **Só forma**: a validação de escrita (RN1–RN16) nasce com a Fase 2 |
-| `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
+| `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa (`casaEntradaSchema`/`casaEdicaoSchema`/`casaArmazenadaSchema`, esta validando o item já persistido) — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
 
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 51 testes de unidade + 14 de integração (DynamoDB Local)
+### `backend/` — 60 testes de unidade + 19 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
 | `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao`, `GET /api/config-publica` |
-| `handlers/api-admin.ts` | `POST /api/admin/casas` (UC-A02) — primeira rota do backoffice; `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
-| `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`) — nunca duplica lógica |
-| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3) |
+| `handlers/api-admin.ts` | `POST /api/admin/casas`, `PUT /api/admin/casas/{casaId}` (UC-A02) — `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
+| `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`, `casas.ts`) — nunca duplica lógica |
+| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterCasa`/`atualizarCasa` (UC-A02, valida forma com `casaArmazenadaSchema`), `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3) |
 | `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato, `decodificarCorpo` (compartilhado por toda rota que recebe JSON) |
 | `lib/auth.ts` (`exigirAdmin`, `criarVerificadorAdmin`) + `lib/erros.ts` (`ErroHttp`) | Verificação do JWT do Cognito (UC-A01) — `aws-jwt-verify`. Consumida por `handlers/api-admin.ts` |
 | `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts`, `admin-casas.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
 **Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`,
 `lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`; o resto de
-`api-admin.ts` (`GET`/`PUT`/`DELETE /api/admin/casas{,/{casaId}}`,
-`POST .../status`); `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`;
-`templates/`.
+`api-admin.ts` (`GET`/`DELETE /api/admin/casas{,/{casaId}}`, `POST .../status`);
+`cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`.
 
 ### `infra/` — 29 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
@@ -238,6 +238,36 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     convenção" antes de existir qualquer gerador — `ulid()` produz exatamente
     o formato de 26 caracteres Crockford base32 que o schema valida, sem
     dependências transitivas.
+20. **RN4 ("slug imutável depois da primeira publicação") usa `status !==
+    RASCUNHO` como proxy de "já publicada".** O modelo de dados não tem um
+    campo dedicado para isso — e não teria como ter, já que "publicar" (UC-A14)
+    ainda nem existe. Nenhum fluxo documentado de UC-A02 leva uma casa de volta
+    a `RASCUNHO`, então a primeira vez que o status muda é, na prática, a
+    primeira vez que a casa pode ter ido ao ar. Registrado como suposição
+    explícita em `ehEdicaoDeSlugPermitida` — revisar quando UC-A14 nascer.
+21. **`PUT /api/admin/casas/{casaId}` nunca aplica o `status` do corpo.**
+    `casaEdicaoSchema` aceita os três valores de status porque o mesmo corpo
+    serve à edição — mas isso não significa que `PUT` deva *aplicar* uma
+    mudança de status: só `POST .../{casaId}/status` faz isso, e é o único
+    lugar que valida RN7 (foto, texto alternativo, preços válidos) antes de
+    permitir `ATIVA`. Deixar `PUT` mudar status sem essa validação seria uma
+    porta para ativar uma casa incompleta pela rota errada. `PUT` sempre
+    preserva o `status` já existente, ignorando o que vier no corpo — mesma
+    postura de `POST` ignorando o `status` enviado na criação (RN1).
+22. **`obterCasa`/`atualizarCasa` fazem a leitura-antes-da-escrita, mas a
+    condição de verdade é sempre da escrita, nunca da leitura.** O handler lê
+    a casa existente para saber o slug/status atuais (para decidir RN4 e
+    montar o item), mas a proteção contra conflito (E9) é a
+    `ConditionExpression: versao = :versaoAnterior` no próprio `PutItem`/
+    `TransactWriteItems` — se outra escrita aconteceu entre a leitura e esta
+    escrita, a condição falha e o handler nunca chega a usar dados obsoletos.
+23. **Mudança de slug na edição reaproveita a transação de `criarCasa`, não
+    uma função nova para "criar só o item de slug".** `Delete` do slug antigo
+    (sem condição — o item sempre existe, foi criado junto com a casa) +
+    `Put` do novo slug (condicionado, RN3) + `Put` da casa (condicionado à
+    versão, E9) num único `TransactWriteItems`, com os índices do array
+    mapeados de volta ao código de erro certo (`SLUG_EM_USO` vs.
+    `CONFLITO_VERSAO`) a partir de `CancellationReasons`.
 
 ---
 
@@ -255,12 +285,14 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   gerado estaticamente a partir de `_dados/*.json`. Precisam ser revisados para
   refletir a API viva antes de `site/` nascer, senão quem implementar o
   frontend parte de um desenho que já não é o decidido.
-- **UC-A02 (CRUD de casas) só tem a rota de criação.** `POST /api/admin/casas`
-  está pronto (entrega 17); faltam `GET /api/admin/casas`, `GET
-  .../{casaId}`, `PUT .../{casaId}` (com controle de versão otimista, E9),
-  `POST .../{casaId}/status` (RN7) e `DELETE .../{casaId}` (RN14, valida
-  reservas ativas). `PUT` é a próxima com risco real (a condição de versão),
-  o resto é majoritariamente leitura.
+- **UC-A02 (CRUD de casas) tem criação e edição; faltam leitura, ativação e
+  exclusão.** `POST`/`PUT /api/admin/casas{,/{casaId}}` prontos (entregas 17
+  e 18). Faltam `GET /api/admin/casas` (lista), `GET .../{casaId}` (detalhe,
+  com `enderecoCompleto`/`tokenIcal`), `POST .../{casaId}/status` (RN7 —
+  validar completude antes de `ATIVA`) e `DELETE .../{casaId}` (RN14, valida
+  reservas ativas antes de apagar). Nenhuma delas tem o risco de concorrência
+  que `PUT`/criação já tinham — são majoritariamente leitura e uma validação
+  de regra já escrita (`avaliarCompletudeParaAtivar`).
 
 ### Resolvidas nesta entrega
 
@@ -292,6 +324,12 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   chamando `exigirAdmin` antes de qualquer roteamento (RN8). `lib/db.ts#criarCasa`
   faz a transação de criação (slug, casa, preços padrão) e mapeia a condição
   de slug falhada para `409 SLUG_EM_USO` (ver decisões 16-19).
+- ~~UC-A02 só tinha a rota de criação~~ — `PUT /api/admin/casas/{casaId}`
+  construído (entrega 18): controle de versão otimista (E9) via
+  `ConditionExpression`, `ehEdicaoDeSlugPermitida` (RN4) decidindo se a
+  mudança de slug é permitida antes de qualquer escrita, e a mesma
+  transação de `criarCasa` reaproveitada para trocar o índice de slug
+  quando ele muda (ver decisões 20-23).
 
 ## Comandos de referência
 

@@ -10,15 +10,26 @@
  * de a Function URL não pagar o custo de abrir uma conexão nova a cada requisição.
  */
 
-import { DynamoDBClient, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
+import {
+  ConditionalCheckFailedException,
+  DynamoDBClient,
+  TransactionCanceledException,
+} from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  PutCommand,
   QueryCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-import { configPrecosSchema, type Casa, type ConfigGeral, type ConfigPrecos } from "@recanto/shared";
+import {
+  casaArmazenadaSchema,
+  configPrecosSchema,
+  type Casa,
+  type ConfigGeral,
+  type ConfigPrecos,
+} from "@recanto/shared";
 
 import { ErroHttp } from "./erros";
 
@@ -88,6 +99,27 @@ export async function obterStatusCasa(casaId: string): Promise<string | undefine
   );
 
   return (resultado.Item as { status?: string } | undefined)?.status;
+}
+
+/**
+ * `GetItem CASA#<casaId>/META` completo (UC-A02: `GET`/`PUT /api/admin/casas/{casaId}`).
+ * `undefined` se a casa não existe — `404` no handler.
+ *
+ * Valida a forma com `casaArmazenadaSchema` antes de devolver, mesmo princípio de
+ * `obterConfigPrecos`: este item é uma árvore (camas, localização, fotos), não um
+ * campo simples como o `status` que `obterStatusCasa` projeta.
+ */
+export async function obterCasa(casaId: string): Promise<Casa | undefined> {
+  const resultado = await documentoDb.send(
+    new GetCommand({ TableName: nomeTabela(), Key: chaveCasa(casaId) }),
+  );
+  if (resultado.Item === undefined) return undefined;
+
+  const validado = casaArmazenadaSchema.safeParse(resultado.Item);
+  if (!validado.success) {
+    throw new Error(`Item da casa ${casaId} com formato inválido: ${validado.error.message}`);
+  }
+  return validado.data;
 }
 
 export function chavePrecos(casaId: string): { PK: string; SK: string } {
@@ -185,6 +217,91 @@ export async function criarCasa(casa: Casa): Promise<void> {
       erro.CancellationReasons?.[0]?.Code === "ConditionalCheckFailed"
     ) {
       throw new ErroHttp(409, "SLUG_EM_USO", "Este endereço já está em uso por outra casa.");
+    }
+    throw erro;
+  }
+}
+
+function erroConflitoVersao(): ErroHttp {
+  return new ErroHttp(
+    409,
+    "CONFLITO_VERSAO",
+    "Esta casa foi alterada em outra aba. Recarregue para ver a versão atual.",
+  );
+}
+
+/**
+ * `PUT /api/admin/casas/{casaId}` (UC-A02, E9): grava `casaAtualizada` inteira,
+ * condicionando à `versaoAnterior` lida pelo handler — a mesma que o UC descreve
+ * ("a escrita usa `ConditionExpression: versao = :versaoLida`").
+ *
+ * Quando o slug não mudou, é um único `PutItem` condicional. Quando mudou — e só
+ * é permitido mudar em `RASCUNHO`, verificado pelo handler via
+ * `ehEdicaoDeSlugPermitida` antes de chamar esta função — é a mesma ideia da
+ * transação de `criarCasa`, trocando o slug antigo pelo novo e levando a mesma
+ * condição de versão para dentro da transação.
+ */
+export async function atualizarCasa(
+  casaAtualizada: Casa,
+  versaoAnterior: number,
+  slugAnterior: string,
+): Promise<void> {
+  const itemCasa = {
+    ...chaveCasa(casaAtualizada.casaId),
+    ...indiceOrdemCasas(casaAtualizada.casaId, casaAtualizada.ordem),
+    ...casaAtualizada,
+  };
+
+  if (casaAtualizada.slug === slugAnterior) {
+    try {
+      await documentoDb.send(
+        new PutCommand({
+          TableName: nomeTabela(),
+          Item: itemCasa,
+          ConditionExpression: "versao = :versaoAnterior",
+          ExpressionAttributeValues: { ":versaoAnterior": versaoAnterior },
+        }),
+      );
+    } catch (erro) {
+      if (erro instanceof ConditionalCheckFailedException) throw erroConflitoVersao();
+      throw erro;
+    }
+    return;
+  }
+
+  try {
+    await documentoDb.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          { Delete: { TableName: nomeTabela(), Key: chaveSlug(slugAnterior) } },
+          {
+            Put: {
+              TableName: nomeTabela(),
+              Item: { ...chaveSlug(casaAtualizada.slug), casaId: casaAtualizada.casaId },
+              ConditionExpression: "attribute_not_exists(PK)",
+            },
+          },
+          {
+            Put: {
+              TableName: nomeTabela(),
+              Item: itemCasa,
+              ConditionExpression: "versao = :versaoAnterior",
+              ExpressionAttributeValues: { ":versaoAnterior": versaoAnterior },
+            },
+          },
+        ],
+      }),
+    );
+  } catch (erro) {
+    if (erro instanceof TransactionCanceledException) {
+      // Índices 1 e 2 — ver TransactItems acima (0 é o Delete do slug antigo,
+      // sem condição, então nunca falha por conta própria).
+      if (erro.CancellationReasons?.[1]?.Code === "ConditionalCheckFailed") {
+        throw new ErroHttp(409, "SLUG_EM_USO", "Este endereço já está em uso por outra casa.");
+      }
+      if (erro.CancellationReasons?.[2]?.Code === "ConditionalCheckFailed") {
+        throw erroConflitoVersao();
+      }
     }
     throw erro;
   }

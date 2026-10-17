@@ -24,6 +24,7 @@ import { z } from "zod";
 
 import { comodidadeSchema } from "../comodidades";
 import { ESTADOS_CASA, SLUG_REGEX, ehUrlDeMapaPermitida, tipoCamaSchema } from "../dominio/casas";
+import { ulidSchema } from "./comum";
 
 export const statusCasaSchema = z.enum(ESTADOS_CASA);
 
@@ -109,3 +110,38 @@ export type CasaEdicao = z.infer<typeof casaEdicaoSchema>;
 
 /** `POST /api/admin/casas/{casaId}/status`: valida RN7 no handler, não aqui. */
 export const alterarStatusCasaSchema = z.object({ status: statusCasaSchema });
+
+/** Uma foto embutida no item da casa (UC-A03, ainda não implementado — este
+ * schema existe só para `casaArmazenadaSchema` validar o que já estiver lá). */
+export const fotoSchema = z.object({
+  fotoId: ulidSchema,
+  chave: z.string().min(1),
+  largura: z.number().int().positive(),
+  altura: z.number().int().positive(),
+  bytes: z.number().int().positive(),
+  legenda: z.string(),
+  textoAlternativo: z.string(),
+  ordem: z.number().int().min(0),
+  principal: z.boolean(),
+  enviadaEm: z.string(),
+});
+
+/**
+ * A casa como ela é persistida (`CASA#<casaId>/META`) — os campos de
+ * `casaEntradaSchema` mais os que só existem depois de criada. Usado por
+ * `lib/db.ts#obterCasa` para validar a forma na leitura, mesmo princípio de
+ * `obterConfigPrecos`: um item corrompido deve virar erro limpo no handler,
+ * não um erro de runtime vazando de `casaEdicaoSchema`/dos handlers de UC-A02.
+ */
+export const casaArmazenadaSchema = casaEntradaSchema.and(
+  z.object({
+    casaId: ulidSchema,
+    fotos: z.array(fotoSchema),
+    tokenIcal: z.string().min(1),
+    publicacaoPendente: z.boolean(),
+    versao: z.number().int().nonnegative(),
+    criadoEm: z.string(),
+    atualizadoEm: z.string(),
+    atualizadoPor: z.string(),
+  }),
+);

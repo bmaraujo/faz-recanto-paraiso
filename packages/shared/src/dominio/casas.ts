@@ -104,6 +104,22 @@ export interface Casa {
 }
 
 /**
+ * RN4: o slug é imutável depois da primeira publicação. O modelo ainda não tem
+ * um campo "já foi publicada" dedicado (nasceria com UC-A14) — esta fase usa
+ * `statusAtual !== "RASCUNHO"` como proxy: nenhum fluxo documentado de UC-A02
+ * leva uma casa de volta a `RASCUNHO` depois de `ATIVA`/`INATIVA`, então a
+ * primeira vez que o status deixa de ser `RASCUNHO` é, na prática, a primeira
+ * vez que a casa pode ter sido publicada.
+ */
+export function ehEdicaoDeSlugPermitida(
+  statusAtual: StatusCasa,
+  slugAtual: string,
+  novoSlug: string,
+): boolean {
+  return slugAtual === novoSlug || statusAtual === "RASCUNHO";
+}
+
+/**
  * Sugere um slug a partir do nome da casa (RN6): minúsculas, sem acento, espaços e
  * símbolos virando `-`, sem hífen duplicado ou nas pontas, truncado ao limite de
  * `RN5`. É só uma sugestão — o admin pode editá-la antes de salvar, e o resultado
