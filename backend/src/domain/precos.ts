@@ -5,6 +5,7 @@
 export {
   calcularCotacao,
   ehErroCotacao,
+  validarConfigPrecos,
   type ConfigGeralCotacao,
   type ConfigPrecos,
   type Cotacao,

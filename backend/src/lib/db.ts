@@ -21,6 +21,7 @@ import {
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 import {
@@ -29,6 +30,7 @@ import {
   type Casa,
   type ConfigGeral,
   type ConfigPrecos,
+  type StatusCasa,
 } from "@recanto/shared";
 
 import { ErroHttp } from "./erros";
@@ -305,6 +307,42 @@ export async function atualizarCasa(
     }
     throw erro;
   }
+}
+
+/**
+ * `POST /api/admin/casas/{casaId}/status` (UC-A02, RN7 validado pelo handler,
+ * não aqui): grava o novo `status` e incrementa `versao` **atomicamente**
+ * (`versao = versao + :um`), sem receber uma `versaoAnterior` do chamador —
+ * esta rota não tem o conceito de "versão lida" que `PUT` tem.
+ *
+ * Incrementar `versao` aqui é o que faz um `PUT` concorrente, que leu a casa
+ * antes desta troca de status, falhar com `CONFLITO_VERSAO` em vez de
+ * sobrescrever o status silenciosamente de volta ao valor antigo.
+ */
+export async function alterarStatusCasa(
+  casaId: string,
+  novoStatus: StatusCasa,
+  atualizadoPor: string,
+  agora: string,
+): Promise<void> {
+  await documentoDb.send(
+    new UpdateCommand({
+      TableName: nomeTabela(),
+      Key: chaveCasa(casaId),
+      ConditionExpression: "attribute_exists(PK)",
+      UpdateExpression:
+        "SET #status = :status, versao = versao + :um, publicacaoPendente = :pendente, " +
+        "atualizadoEm = :agora, atualizadoPor = :por",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":status": novoStatus,
+        ":um": 1,
+        ":pendente": true,
+        ":agora": agora,
+        ":por": atualizadoPor,
+      },
+    }),
+  );
 }
 
 /**

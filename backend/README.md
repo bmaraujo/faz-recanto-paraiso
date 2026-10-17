@@ -75,10 +75,10 @@ não construída (só precisa de `Query` na tabela, sem preço nem admin):
 | `lib/config.ts`, `lib/http.ts`, `lib/db.ts` | ✅ |
 | `domain/` (reexportado de `@recanto/shared`: `datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`, `casas.ts`) | ✅ |
 | ESLint com `eslint-plugin-import`/`no-restricted-paths` (raiz do repo, `eslint.config.mjs`) | ✅ — `domain/` não importa `lib/` nem o AWS SDK, verificado de verdade (não só documentado) |
-| `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre disponibilidade, cotação, config pública e as transações de criação/edição de casa (concorrência real na unicidade de slug e no controle de versão) |
+| `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre disponibilidade, cotação, config pública e as transações de criação/edição/ativação de casa (concorrência real na unicidade de slug e no controle de versão, inclusive entre `PUT` e troca de status) |
 | `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` (`ErroHttp`) | ✅ |
-| `handlers/api-admin.ts` — `POST`/`PUT /api/admin/casas{,/{casaId}}` (UC-A02) | ✅ — `lib/db.ts#criarCasa`/`atualizarCasa` fazem as transações (slug + casa + preços padrão na criação; versão otimista e troca de slug na edição, RN4/E9) |
+| `handlers/api-admin.ts` — `POST`/`PUT /api/admin/casas{,/{casaId}}` + `POST .../status` (UC-A02) | ✅ — `lib/db.ts#criarCasa`/`atualizarCasa`/`alterarStatusCasa` fazem as escritas (slug + casa + preços padrão na criação; versão otimista e troca de slug na edição, RN4/E9; incremento atômico de versão na troca de status, RN7) |
 | `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`, `lib/log.ts` | ⬜ |
 | `handlers/api-publica.ts` — `GET /api/casas`, `GET /api/casas/{slug}` | ⬜ — próximas entregas da Fase 1 |
-| `handlers/api-admin.ts` — `GET /api/admin/casas{,/{casaId}}`, `POST .../status`, `DELETE .../{casaId}`, `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
+| `handlers/api-admin.ts` — `GET /api/admin/casas{,/{casaId}}`, `DELETE .../{casaId}`, `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
 | `templates/` | ⬜ |

@@ -1,21 +1,38 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
-import type { Casa } from "@recanto/shared";
+import type { Casa, ConfigPrecos, StatusCasa } from "@recanto/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Identidade } from "../../../src/lib/auth";
 import { ErroHttp } from "../../../src/lib/erros";
 import { criarEvento } from "../../evento-teste";
 
-const { exigirAdmin, criarVerificadorAdmin, criarCasa, obterCasa, atualizarCasa } = vi.hoisted(() => ({
+const {
+  exigirAdmin,
+  criarVerificadorAdmin,
+  criarCasa,
+  obterCasa,
+  atualizarCasa,
+  obterConfigPrecos,
+  alterarStatusCasa,
+} = vi.hoisted(() => ({
   exigirAdmin: vi.fn<(evento: APIGatewayProxyEventV2, verificador: unknown) => Promise<Identidade>>(),
   criarVerificadorAdmin: vi.fn(() => ({})),
   criarCasa: vi.fn<(casa: Casa) => Promise<void>>(),
   obterCasa: vi.fn<(casaId: string) => Promise<Casa | undefined>>(),
   atualizarCasa: vi.fn<(casa: Casa, versaoAnterior: number, slugAnterior: string) => Promise<void>>(),
+  obterConfigPrecos: vi.fn<(casaId: string) => Promise<ConfigPrecos | undefined>>(),
+  alterarStatusCasa:
+    vi.fn<(casaId: string, status: StatusCasa, atualizadoPor: string, agora: string) => Promise<void>>(),
 }));
 
 vi.mock("../../../src/lib/auth", () => ({ exigirAdmin, criarVerificadorAdmin }));
-vi.mock("../../../src/lib/db", () => ({ criarCasa, obterCasa, atualizarCasa }));
+vi.mock("../../../src/lib/db", () => ({
+  criarCasa,
+  obterCasa,
+  atualizarCasa,
+  obterConfigPrecos,
+  alterarStatusCasa,
+}));
 
 import { handler } from "../../../src/handlers/api-admin";
 
@@ -70,15 +87,58 @@ function eventoPut(casaId: string, corpo: unknown): APIGatewayProxyEventV2 {
   });
 }
 
+function eventoStatus(casaId: string, corpo: unknown): APIGatewayProxyEventV2 {
+  return criarEvento("POST", `/api/admin/casas/${casaId}/status`, {
+    headers: { authorization: "Bearer token-de-teste" },
+    body: typeof corpo === "string" ? corpo : JSON.stringify(corpo),
+  });
+}
+
+const PRECOS_VALIDOS: ConfigPrecos = {
+  diariaBaseCentavos: 50_000,
+  diariaFimDeSemanaCentavos: 65_000,
+  diasFimDeSemana: ["SEX", "SAB"],
+  temporadas: [],
+  feriados: [],
+  minNoitesPadrao: 2,
+  maxNoites: 60,
+  taxaLimpezaCentavos: 25_000,
+  hospedesInclusos: 6,
+  capacidadeMaxima: 8,
+  valorHospedeExtraPorNoiteCentavos: 5_000,
+};
+
+const CASA_COMPLETA_PARA_ATIVAR: Casa = {
+  ...CASA_EXISTENTE,
+  fotos: [
+    {
+      fotoId: "01HQ9999999999999999999999",
+      chave: "midia/casas/01HQ.../fachada.webp",
+      largura: 1600,
+      altura: 1067,
+      bytes: 184_320,
+      legenda: "Fachada",
+      textoAlternativo: "Casa de madeira vista do lago",
+      ordem: 10,
+      principal: true,
+      enviadaEm: "2026-10-11T18:04:00-03:00",
+    },
+  ],
+};
+
 beforeEach(() => {
   exigirAdmin.mockReset();
   criarCasa.mockReset();
   obterCasa.mockReset();
   atualizarCasa.mockReset();
+  obterConfigPrecos.mockReset();
+  alterarStatusCasa.mockReset();
   exigirAdmin.mockResolvedValue(ADMIN);
   criarCasa.mockResolvedValue(undefined);
   obterCasa.mockResolvedValue(CASA_EXISTENTE);
   atualizarCasa.mockResolvedValue(undefined);
+  obterConfigPrecos.mockResolvedValue(PRECOS_VALIDOS);
+  alterarStatusCasa.mockResolvedValue(undefined);
 });
 
 describe("autenticação (RN8)", () => {
@@ -299,5 +359,87 @@ describe("PUT /api/admin/casas/{casaId} (UC-A02, E9)", () => {
 
     expect(resposta.statusCode).toBe(409);
     expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "SLUG_EM_USO" });
+  });
+});
+
+describe("POST /api/admin/casas/{casaId}/status (UC-A02, RN7)", () => {
+  it("9. ativa uma casa completa e responde 200", async () => {
+    obterCasa.mockResolvedValue(CASA_COMPLETA_PARA_ATIVAR);
+
+    const resposta = await handler(eventoStatus(CASA_ID, { status: "ATIVA" }));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(alterarStatusCasa).toHaveBeenCalledWith(CASA_ID, "ATIVA", ADMIN.sub, expect.any(String));
+    const corpo = JSON.parse(resposta.body as string) as Casa;
+    expect(corpo).toMatchObject({
+      status: "ATIVA",
+      versao: CASA_COMPLETA_PARA_ATIVAR.versao + 1,
+      publicacaoPendente: true,
+      atualizadoPor: ADMIN.sub,
+    });
+  });
+
+  it("6. ativar casa sem fotos falha com 422 e faltando: ['fotos']", async () => {
+    const resposta = await handler(eventoStatus(CASA_ID, { status: "ATIVA" })); // CASA_EXISTENTE não tem fotos
+
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({
+      erro: "CASA_INCOMPLETA",
+      detalhes: { faltando: ["fotos"] },
+    });
+    expect(alterarStatusCasa).not.toHaveBeenCalled();
+  });
+
+  it("7. ativar casa sem preços válidos falha com 422", async () => {
+    obterCasa.mockResolvedValue(CASA_COMPLETA_PARA_ATIVAR);
+    obterConfigPrecos.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoStatus(CASA_ID, { status: "ATIVA" }));
+
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({
+      erro: "CASA_INCOMPLETA",
+      detalhes: { faltando: ["precos"] },
+    });
+  });
+
+  it("A1: desativa (INATIVA) sem exigir completude", async () => {
+    const resposta = await handler(eventoStatus(CASA_ID, { status: "INATIVA" }));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(alterarStatusCasa).toHaveBeenCalledWith(CASA_ID, "INATIVA", ADMIN.sub, expect.any(String));
+    expect(obterConfigPrecos).not.toHaveBeenCalled();
+  });
+
+  it("RN4 (decisão 20): RASCUNHO nunca é destino válido por aqui", async () => {
+    const resposta = await handler(eventoStatus(CASA_ID, { status: "RASCUNHO" }));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(obterCasa).not.toHaveBeenCalled();
+    expect(alterarStatusCasa).not.toHaveBeenCalled();
+  });
+
+  it("responde 404 quando a casa não existe", async () => {
+    obterCasa.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoStatus(CASA_ID, { status: "ATIVA" }));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(alterarStatusCasa).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o status não é um valor do enum", async () => {
+    const resposta = await handler(eventoStatus(CASA_ID, { status: "PUBLICADA" }));
+    expect(resposta.statusCode).toBe(400);
+  });
+
+  it("responde 400 quando o corpo está ausente", async () => {
+    const resposta = await handler(
+      criarEvento("POST", `/api/admin/casas/${CASA_ID}/status`, {
+        headers: { authorization: "Bearer token-de-teste" },
+      }),
+    );
+    expect(resposta.statusCode).toBe(400);
   });
 });

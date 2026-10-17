@@ -8,7 +8,8 @@
  * Uma rota por entrega:
  *
  * - `POST /api/admin/casas` — UC-A02
- * - `PUT /api/admin/casas/{casaId}` — UC-A02 (esta entrega)
+ * - `PUT /api/admin/casas/{casaId}` — UC-A02
+ * - `POST /api/admin/casas/{casaId}/status` — UC-A02 (esta entrega)
  * - (demais rotas de UC-A02 e dos outros UCs de backoffice: a seguir)
  */
 
@@ -17,16 +18,29 @@ import { randomBytes } from "node:crypto";
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 import { ulid } from "ulid";
 
-import { casaEdicaoSchema, casaEntradaSchema, type Casa } from "@recanto/shared";
+import {
+  alterarStatusCasaSchema,
+  casaEdicaoSchema,
+  casaEntradaSchema,
+  type Casa,
+} from "@recanto/shared";
 
-import { ehEdicaoDeSlugPermitida } from "../domain/casas";
+import { avaliarCompletudeParaAtivar, ehEdicaoDeSlugPermitida } from "../domain/casas";
 import { formatarInstanteIso } from "../domain/datas";
+import { validarConfigPrecos } from "../domain/precos";
 import { criarVerificadorAdmin, exigirAdmin, type Identidade, type VerificadorAdmin } from "../lib/auth";
-import { atualizarCasa, criarCasa, obterCasa } from "../lib/db";
+import {
+  alterarStatusCasa,
+  atualizarCasa,
+  criarCasa,
+  obterCasa,
+  obterConfigPrecos,
+} from "../lib/db";
 import { ErroHttp } from "../lib/erros";
 import { decodificarCorpo, respostaErro, respostaJson } from "../lib/http";
 
 const ROTA_CASA_POR_ID = /^\/api\/admin\/casas\/([^/]+)$/;
+const ROTA_STATUS_CASA = /^\/api\/admin\/casas\/([^/]+)\/status$/;
 
 /** Mesma ordem de grandeza dos campos de texto de `casaEntradaSchema`
  * (`descricao`, `regras`, `comoChegar`, 10.000 chars cada) mais a margem dos
@@ -60,6 +74,12 @@ export async function handler(
 
     if (metodo === "POST" && caminho === "/api/admin/casas") {
       return await criarCasaHandler(evento, identidade);
+    }
+
+    const statusMatch = metodo === "POST" ? ROTA_STATUS_CASA.exec(caminho) : null;
+    if (statusMatch !== null) {
+      const casaId = statusMatch[1] as string;
+      return await alterarStatusCasaHandler(evento, casaId, identidade);
     }
 
     const casaMatch = metodo === "PUT" ? ROTA_CASA_POR_ID.exec(caminho) : null;
@@ -197,4 +217,74 @@ async function atualizarCasaHandler(
   await atualizarCasa(casaAtualizada, entrada.data.versao, casaExistente.slug);
 
   return respostaJson(200, casaAtualizada);
+}
+
+/**
+ * `POST /api/admin/casas/{casaId}/status` (UC-A02): fecha o ciclo
+ * `RASCUNHO` → `ATIVA` ↔ `INATIVA`.
+ *
+ * `RASCUNHO` nunca é um destino válido aqui — é só o estado de nascimento
+ * (RN1). Sem essa restrição, voltar uma casa publicada a `RASCUNHO` e editá-la
+ * de novo seria uma forma de contornar `ehEdicaoDeSlugPermitida` (RN4): o
+ * modelo não tem um campo "já foi publicada" dedicado, só o proxy `status !==
+ * RASCUNHO` (ver `dominio/casas.ts`), e esse proxy só funciona se nada nunca
+ * levar o status de volta para lá.
+ *
+ * RN7: ativar exige ao menos 1 foto, foto principal, texto alternativo em
+ * todas e preços válidos — `avaliarCompletudeParaAtivar` decide, não esta
+ * função; o que falta vai em `detalhes.faltando` do `422`.
+ */
+async function alterarStatusCasaHandler(
+  evento: APIGatewayProxyEventV2,
+  casaId: string,
+  identidade: Identidade,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const corpo = lerCorpoJson(evento);
+  if ("resposta" in corpo) return corpo.resposta;
+
+  const entrada = alterarStatusCasaSchema.safeParse(corpo.dados);
+  if (!entrada.success) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Dados inválidos.", {
+      campos: entrada.error.issues.map((problema) => problema.path.join(".")),
+    });
+  }
+
+  if (entrada.data.status === "RASCUNHO") {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Uma casa não pode voltar a rascunho.", {
+      campos: ["status"],
+    });
+  }
+
+  const casaExistente = await obterCasa(casaId);
+  if (casaExistente === undefined) {
+    return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
+  }
+
+  if (entrada.data.status === "ATIVA") {
+    const precos = await obterConfigPrecos(casaId);
+    const precosValidos = precos !== undefined && validarConfigPrecos(precos).erros.length === 0;
+    const completude = avaliarCompletudeParaAtivar({
+      resumo: casaExistente.resumo,
+      descricao: casaExistente.descricao,
+      fotos: casaExistente.fotos,
+      precosValidos,
+    });
+    if (!completude.completa) {
+      return respostaErro(422, "CASA_INCOMPLETA", "A casa não está pronta para ativar.", {
+        faltando: completude.faltando,
+      });
+    }
+  }
+
+  const agora = formatarInstanteIso(new Date());
+  await alterarStatusCasa(casaId, entrada.data.status, identidade.sub, agora);
+
+  return respostaJson(200, {
+    ...casaExistente,
+    status: entrada.data.status,
+    versao: casaExistente.versao + 1,
+    publicacaoPendente: true,
+    atualizadoEm: agora,
+    atualizadoPor: identidade.sub,
+  });
 }
