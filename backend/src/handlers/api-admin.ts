@@ -9,7 +9,8 @@
  *
  * - `POST /api/admin/casas` — UC-A02
  * - `PUT /api/admin/casas/{casaId}` — UC-A02
- * - `POST /api/admin/casas/{casaId}/status` — UC-A02 (esta entrega)
+ * - `POST /api/admin/casas/{casaId}/status` — UC-A02
+ * - `GET /api/admin/casas`, `GET /api/admin/casas/{casaId}` — UC-A02 (esta entrega)
  * - (demais rotas de UC-A02 e dos outros UCs de backoffice: a seguir)
  */
 
@@ -33,6 +34,7 @@ import {
   alterarStatusCasa,
   atualizarCasa,
   criarCasa,
+  listarCasas,
   obterCasa,
   obterConfigPrecos,
 } from "../lib/db";
@@ -76,16 +78,22 @@ export async function handler(
       return await criarCasaHandler(evento, identidade);
     }
 
+    if (metodo === "GET" && caminho === "/api/admin/casas") {
+      return await listarCasasHandler();
+    }
+
     const statusMatch = metodo === "POST" ? ROTA_STATUS_CASA.exec(caminho) : null;
     if (statusMatch !== null) {
       const casaId = statusMatch[1] as string;
       return await alterarStatusCasaHandler(evento, casaId, identidade);
     }
 
-    const casaMatch = metodo === "PUT" ? ROTA_CASA_POR_ID.exec(caminho) : null;
+    const casaMatch = metodo === "PUT" || metodo === "GET" ? ROTA_CASA_POR_ID.exec(caminho) : null;
     if (casaMatch !== null) {
       const casaId = casaMatch[1] as string;
-      return await atualizarCasaHandler(evento, casaId, identidade);
+      return metodo === "PUT"
+        ? await atualizarCasaHandler(evento, casaId, identidade)
+        : await obterCasaHandler(casaId);
     }
 
     return respostaErro(404, "NAO_ENCONTRADO", "Rota não encontrada.");
@@ -287,4 +295,69 @@ async function alterarStatusCasaHandler(
     atualizadoEm: agora,
     atualizadoPor: identidade.sub,
   });
+}
+
+/**
+ * `GET /api/admin/casas` (UC-A02): a lista da vitrine do backoffice, na ordem
+ * de exibição (`GSI1SK`, já ordenada por `ordem` — `lib/db.ts#listarCasas`
+ * não precisa reordenar nada).
+ *
+ * `completa`/`temPrecos` são calculados aqui, não guardados no item: é o que
+ * permite à lista mostrar "pronta para ativar" sem uma segunda chamada por
+ * casa (mesmo raciocínio de `completude` em `POST .../status`). Isso custa
+ * um `GetItem` de preços por casa — aceitável com o número de casas de uma
+ * única fazenda, não escalaria para um catálogo grande.
+ *
+ * `reservasAtivas` é sempre `0`: não é um valor inventado, é o estado real
+ * de um sistema sem nenhuma reserva ainda (`POST /api/solicitacoes`, Fase 2,
+ * não existe). Atualizar quando esse UC nascer.
+ */
+async function listarCasasHandler(): Promise<APIGatewayProxyStructuredResultV2> {
+  const casas = await listarCasas();
+
+  const linhas = await Promise.all(
+    casas.map(async (casa) => {
+      const precos = await obterConfigPrecos(casa.casaId);
+      const precosValidos = precos !== undefined && validarConfigPrecos(precos).erros.length === 0;
+      const completude = avaliarCompletudeParaAtivar({
+        resumo: casa.resumo,
+        descricao: casa.descricao,
+        fotos: casa.fotos,
+        precosValidos,
+      });
+      const fotoPrincipal = casa.fotos.find((foto) => foto.principal);
+
+      return {
+        casaId: casa.casaId,
+        slug: casa.slug,
+        nome: casa.nome,
+        status: casa.status,
+        ordem: casa.ordem,
+        destaque: casa.destaque,
+        capacidadeMaxima: casa.capacidadeMaxima,
+        totalFotos: casa.fotos.length,
+        publicacaoPendente: casa.publicacaoPendente,
+        temPrecos: precosValidos,
+        completa: completude.completa,
+        fotoPrincipalUrl: fotoPrincipal === undefined ? undefined : `/${fotoPrincipal.chave}`,
+        reservasAtivas: 0,
+        atualizadoEm: casa.atualizadoEm,
+      };
+    }),
+  );
+
+  return respostaJson(200, { casas: linhas });
+}
+
+/**
+ * `GET /api/admin/casas/{casaId}` (UC-A02): a casa completa, incluindo
+ * `enderecoCompleto` e `tokenIcal` — ao contrário de uma futura rota pública
+ * (RN11), isto é o backoffice, para o próprio admin.
+ */
+async function obterCasaHandler(casaId: string): Promise<APIGatewayProxyStructuredResultV2> {
+  const casa = await obterCasa(casaId);
+  if (casa === undefined) {
+    return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
+  }
+  return respostaJson(200, casa);
 }
