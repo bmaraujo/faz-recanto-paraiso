@@ -14,6 +14,8 @@
 
 import { z } from "zod";
 
+import type { ComodidadeCodigo } from "../comodidades";
+
 /** RN5: formato e tamanho do slug. Único (RN3) e imutável após publicar (RN4) —
  * as duas regras que exigem banco e por isso não estão aqui. */
 export const SLUG_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -22,6 +24,84 @@ const SLUG_TAMANHO_MAXIMO = 60;
 export const TIPOS_CAMA = ["CASAL", "SOLTEIRO", "BELICHE", "REDE"] as const;
 export type TipoCama = (typeof TIPOS_CAMA)[number];
 export const tipoCamaSchema = z.enum(TIPOS_CAMA);
+
+/** RN1/RN2: só `ATIVA` aparece no site público. Única fonte deste enum — o zod de
+ * `schemas/casa.ts` importa `ESTADOS_CASA`, não o repete. */
+export const ESTADOS_CASA = ["RASCUNHO", "ATIVA", "INATIVA"] as const;
+export type StatusCasa = (typeof ESTADOS_CASA)[number];
+
+export interface Cama {
+  tipo: TipoCama;
+  quantidade: number;
+  ambiente: string;
+}
+
+export interface Distancia {
+  referencia: string;
+  km: number;
+}
+
+/** RN11: `enderecoCompleto` nunca sai do backoffice/`PRE_CHECKIN` — quem monta a
+ * resposta pública usa um tipo derivado deste, sem este campo (ainda não existe
+ * porque nenhum handler lê `Casa` do banco; ver `backend/src/lib/db.ts`). */
+export interface Localizacao {
+  enderecoPublico: string;
+  enderecoCompleto?: string;
+  lat?: number;
+  lng?: number;
+  mapaEmbedUrl?: string;
+  comoChegar?: string;
+  distancias?: Distancia[];
+}
+
+/** Uma foto embutida no item da casa (docs/03-tecnico/02-modelo-de-dados.md,
+ * seção "Fotos"). `principal` é exclusiva: no máximo uma foto por casa a tem. */
+export interface Foto {
+  fotoId: string;
+  chave: string;
+  largura: number;
+  altura: number;
+  bytes: number;
+  legenda: string;
+  textoAlternativo: string;
+  ordem: number;
+  principal: boolean;
+  enviadaEm: string;
+}
+
+/**
+ * A casa como ela é persistida (`CASA#<casaId>/META`) — não o corpo que o admin
+ * envia (`CasaEntrada`, em `schemas/casa.ts`): esta tem os campos que só existem
+ * depois de criada (`casaId`, `tokenIcal`, `versao`) ou que vêm de outros UCs
+ * (`fotos`, de UC-A03). As duas formas duplicam os campos comuns de propósito —
+ * `dominio/` não importa `schemas/` (a direção é sempre a contrária), para o
+ * núcleo de regras não depender de como a entrada é validada.
+ */
+export interface Casa {
+  casaId: string;
+  slug: string;
+  nome: string;
+  status: StatusCasa;
+  ordem: number;
+  destaque: boolean;
+  resumo: string;
+  descricao: string;
+  capacidadeMaxima: number;
+  hospedesInclusos: number;
+  quartos: number;
+  banheiros: number;
+  camas: Cama[];
+  comodidades: ComodidadeCodigo[];
+  regras?: string;
+  localizacao: Localizacao;
+  fotos: Foto[];
+  tokenIcal: string;
+  publicacaoPendente: boolean;
+  versao: number;
+  criadoEm: string;
+  atualizadoEm: string;
+  atualizadoPor: string;
+}
 
 /**
  * Sugere um slug a partir do nome da casa (RN6): minúsculas, sem acento, espaços e

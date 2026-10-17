@@ -34,10 +34,11 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 12 | 2026-10-14 | 0 | — | Registro de progresso (este arquivo) | `2b502c6` |
 | 13 | 2026-10-14 | 1 | UC-A13 | `GET /api/config-publica` — projeção pública de `CONFIG/GERAL` (RN14) + `obterConfigGeral` único em `lib/db.ts` (substitui `obterConfigGeralCotacao`) | `fe41158` |
 | 14 | 2026-10-14 | 0 | UC-A01 | `infra/` nasce: stacks `dados` (DynamoDB + SSM) e `auth` (Cognito User Pool, App Client, domínio, grupo `admin`), com testes de infraestrutura (`aws-cdk-lib/assertions`) | `7374dcc` |
-| 15 | 2026-10-14 | 1 | UC-A01 | `backend/src/lib/auth.ts` (`exigirAdmin`) + `lib/erros.ts` (`ErroHttp`) — verifica o JWT do Cognito, testado com JWKS de teste local via `cacheJwks` | _pendente_ |
+| 15 | 2026-10-14 | 1 | UC-A01 | `backend/src/lib/auth.ts` (`exigirAdmin`) + `lib/erros.ts` (`ErroHttp`) — verifica o JWT do Cognito, testado com JWKS de teste local via `cacheJwks` | `70bc948` |
+| 16 | 2026-10-17 | 1 | UC-A02 | Tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`) em `dominio/casas.ts`; `ESTADOS_CASA` extraído como fonte única do enum, compartilhado com `statusCasaSchema` | _pendente_ |
 
-**Estado em `main` agora:** `737b35e` (merge do PR #8, `infra/` + `GET /api/config-publica`).
-A entrega 15 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
+**Estado em `main` agora:** `e272f67` (merge do PR #9, `lib/auth.ts`/`lib/erros.ts`).
+A entrega 16 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
 executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta real
 `627010764306`.
 
@@ -52,7 +53,7 @@ executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a cont
 | `dominio/datas.ts` | Aritmética de datas em `America/Sao_Paulo`: `noitesDe`, `noitesDePeriodoInclusivo`, `dtEndDeCheckout`, `hojeEmSaoPaulo`, `formatarDataPtBr`, `formatarInstanteIso` (ISO 8601 **com offset**, não `toISOString()`) |
 | `dominio/precos.ts` | `calcularCotacao` (a mesma função do navegador e do servidor), `validarConfigPrecos` |
 | `dominio/disponibilidade.ts` | `verificarDisponibilidade`, `listarNoitesOcupadas`, `noitesOcupadasEm`, `agruparNoitesContiguas`, `validarIntervaloConsulta` |
-| `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar (parte pura de UC-A02) |
+| `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar (parte pura de UC-A02); tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`/`ESTADOS_CASA`) — a forma do item `CASA#<id>/META` persistido |
 | `dominio/formato.ts` | `formatarMoeda`, `formatarValorPorNoite` |
 | `dominio/configGeral.ts` | Tipo `ConfigGeral` (forma do item completo) e `projetarConfigGeralPublica` — allowlist de RN14 (UC-A13). **Só forma**: a validação de escrita (RN1–RN16) nasce com a Fase 2 |
 | `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
@@ -90,8 +91,7 @@ dar um domínio real.
 
 **Ainda não construído:** `stack-backend` (Lambdas, Function URLs, IAM,
 EventBridge), `stack-frontend` (S3, CloudFront, ACM), `stack-observabilidade`
-(alarmes, Budgets, SNS); `lib/auth.ts` no backend (o verificador de JWT que
-consome este User Pool); nenhum `cdk deploy` foi executado — só `synth`/`diff`
+(alarmes, Budgets, SNS); nenhum `cdk deploy` foi executado — só `synth`/`diff`
 (somente leitura).
 
 ### `site/`
@@ -194,6 +194,17 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     chamada de rede acontece. Tokens de teste assinados com `jsonwebtoken`
     (devDependency). Mesmo princípio do DynamoDB Local: testar contra a
     biblioteca real, não contra um mock dela.
+15. **`dominio/casas.ts` não importa `schemas/casa.ts`, mesmo com o tipo
+    `Casa` (entidade persistida) e `CasaEntrada` (corpo validado por zod)
+    compartilhando quase todos os campos.** A direção de dependência do
+    pacote já era `schemas/` → `dominio/` (`schemas/casa.ts` importa
+    `SLUG_REGEX`/`ehUrlDeMapaPermitida`/`tipoCamaSchema` de lá); inverter só
+    para esses dois tipos criaria um ciclo. A duplicação de campos entre os
+    dois tipos é o custo aceito — igual ao de `ConfigGeral`, que também não
+    tem um schema de escrita correspondente ainda. `ESTADOS_CASA` (o array
+    `["RASCUNHO", "ATIVA", "INATIVA"]`) saiu de `statusCasaSchema` para
+    `dominio/casas.ts` para não duplicar a enumeração em si, só a forma do
+    objeto.
 
 ---
 
@@ -215,12 +226,12 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   pronto e testado; falta `handlers/api-admin.ts` (que não existe) chamá-lo em
   toda rota de `/api/admin/*`, antes de qualquer leitura (RN8). Candidato
   natural a vir junto da primeira rota de UC-A02.
-- **UC-A02 (CRUD de casas) continua maior que as rotas já construídas**: além
-  de `exigirAdmin` (resolvido nesta entrega), exige um tipo `Casa` completo
-  (nome, fotos, comodidades, descrição) que ainda não existe em
-  `packages/shared`, e toca `TransactWriteItems` (criação com unicidade de
-  slug) e controle de versão otimista — mais próximo em risco de
-  `POST /api/solicitacoes` (Fase 2) do que das rotas de leitura já feitas.
+- **UC-A02 (CRUD de casas) continua maior que as rotas já construídas**: o
+  tipo `Casa` e `exigirAdmin` já existem (resolvidos nesta entrega e na
+  anterior); falta `handlers/api-admin.ts` de verdade, com `TransactWriteItems`
+  na criação (unicidade de slug via `SLUG#<slug>/META`) e controle de versão
+  otimista no `PUT` (E9) — mais próximo em risco de `POST /api/solicitacoes`
+  (Fase 2) do que das rotas de leitura já feitas.
 
 ### Resolvidas nesta entrega
 
@@ -244,6 +255,10 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
 - ~~`lib/auth.ts` do backend ainda não existe~~ — construído (entrega 15):
   `exigirAdmin` verifica o JWT do Cognito do `stack-auth`, com a distinção
   `401`/`403` correta (ver decisão 13) e testado sem Cognito real (decisão 14).
+- ~~UC-A02 exige um tipo `Casa` completo que ainda não existe~~ — construído
+  (entrega 16): `Casa`, `Foto`, `Cama`, `Localizacao`, `Distancia` e
+  `StatusCasa`/`ESTADOS_CASA` em `dominio/casas.ts` (ver decisão 15). Ainda
+  falta `handlers/api-admin.ts` consumir o tipo — ver acima.
 
 ## Comandos de referência
 
