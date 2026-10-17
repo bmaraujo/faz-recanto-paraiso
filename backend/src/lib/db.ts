@@ -10,10 +10,17 @@
  * de a Function URL não pagar o custo de abrir uma conexão nova a cada requisição.
  */
 
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBClient, TransactionCanceledException } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  QueryCommand,
+  TransactWriteCommand,
+} from "@aws-sdk/lib-dynamodb";
 
-import { configPrecosSchema, type ConfigGeral, type ConfigPrecos } from "@recanto/shared";
+import { configPrecosSchema, type Casa, type ConfigGeral, type ConfigPrecos } from "@recanto/shared";
+
+import { ErroHttp } from "./erros";
 
 const NOME_TABELA_PADRAO = "recanto-paraiso-dev";
 
@@ -40,6 +47,16 @@ export function nomeTabela(env: NodeJS.ProcessEnv = process.env): string {
 
 export function chaveCasa(casaId: string): { PK: string; SK: string } {
   return { PK: `CASA#${casaId}`, SK: "META" };
+}
+
+export function chaveSlug(slug: string): { PK: string; SK: string } {
+  return { PK: `SLUG#${slug}`, SK: "META" };
+}
+
+/** GSI1 do item `CASA#<id>/META`: lista a vitrine ordenada sem `Scan` (`ordem` com
+ * zero à esquerda, para ordenar como string). */
+function indiceOrdemCasas(casaId: string, ordem: number): { GSI1PK: string; GSI1SK: string } {
+  return { GSI1PK: "CASAS", GSI1SK: `${String(ordem).padStart(4, "0")}#${casaId}` };
 }
 
 export function chaveOcupacao(casaId: string, data: string): { PK: string; SK: string } {
@@ -98,6 +115,79 @@ export async function obterConfigPrecos(casaId: string): Promise<ConfigPrecos | 
     throw new Error(`Item de preços de ${casaId} com formato inválido: ${validado.error.message}`);
   }
   return validado.data;
+}
+
+/**
+ * Preços padrão de uma casa recém-criada (UC-A02, "Implementação" → "Criação"):
+ * tudo zerado. Não existe uma flag `validado` separada no item — `diariaBaseCentavos: 0`
+ * já falha `validarConfigPrecos` por conta própria ("a diária base precisa ser maior
+ * que zero"), o que basta para `avaliarCompletudeParaAtivar` (RN7) saber que a casa
+ * não está pronta para ativar até o admin configurar os preços de verdade.
+ */
+function precosPadrao(casa: Pick<Casa, "capacidadeMaxima" | "hospedesInclusos">): ConfigPrecos {
+  return {
+    diariaBaseCentavos: 0,
+    diariaFimDeSemanaCentavos: 0,
+    diasFimDeSemana: [],
+    temporadas: [],
+    feriados: [],
+    minNoitesPadrao: 1,
+    maxNoites: 1,
+    taxaLimpezaCentavos: 0,
+    valorHospedeExtraPorNoiteCentavos: 0,
+    capacidadeMaxima: casa.capacidadeMaxima,
+    hospedesInclusos: casa.hospedesInclusos,
+  };
+}
+
+/**
+ * Cria a casa, o índice de slug e os preços padrão numa única transação
+ * (UC-A02, RN3). A condição no item de slug é **o que garante a unicidade** —
+ * nunca verificar com `GetItem` antes: duas criações simultâneas com o mesmo
+ * slug passariam (armadilha nº 1 do UC). `SLUG_EM_USO` nunca é um `GetItem`
+ * prévio, só o `409` desta condição falhando.
+ */
+export async function criarCasa(casa: Casa): Promise<void> {
+  try {
+    await documentoDb.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Put: {
+              TableName: nomeTabela(),
+              Item: { ...chaveSlug(casa.slug), casaId: casa.casaId },
+              ConditionExpression: "attribute_not_exists(PK)",
+            },
+          },
+          {
+            Put: {
+              TableName: nomeTabela(),
+              Item: { ...chaveCasa(casa.casaId), ...indiceOrdemCasas(casa.casaId, casa.ordem), ...casa },
+              ConditionExpression: "attribute_not_exists(PK)",
+            },
+          },
+          {
+            Put: {
+              TableName: nomeTabela(),
+              Item: { ...chavePrecos(casa.casaId), ...precosPadrao(casa) },
+              ConditionExpression: "attribute_not_exists(PK)",
+            },
+          },
+        ],
+      }),
+    );
+  } catch (erro) {
+    // Índice 0 é sempre o item de slug (ver TransactItems acima) — colisão de
+    // casaId (índice 1) é praticamente impossível com ULID, mas cairia no `throw erro`
+    // genérico abaixo em vez de ser confundida com SLUG_EM_USO.
+    if (
+      erro instanceof TransactionCanceledException &&
+      erro.CancellationReasons?.[0]?.Code === "ConditionalCheckFailed"
+    ) {
+      throw new ErroHttp(409, "SLUG_EM_USO", "Este endereço já está em uso por outra casa.");
+    }
+    throw erro;
+  }
 }
 
 /**

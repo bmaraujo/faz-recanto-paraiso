@@ -75,9 +75,10 @@ não construída (só precisa de `Query` na tabela, sem preço nem admin):
 | `lib/config.ts`, `lib/http.ts`, `lib/db.ts` | ✅ |
 | `domain/` (reexportado de `@recanto/shared`: `datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`) | ✅ |
 | ESLint com `eslint-plugin-import`/`no-restricted-paths` (raiz do repo, `eslint.config.mjs`) | ✅ — `domain/` não importa `lib/` nem o AWS SDK, verificado de verdade (não só documentado) |
-| `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre disponibilidade, cotação e config pública; os cenários de concorrência/transação entram com `POST /api/solicitacoes` |
+| `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre disponibilidade, cotação, config pública e a transação de criação de casa (concorrência real na unicidade de slug) |
 | `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` (`ErroHttp`) | ✅ |
+| `handlers/api-admin.ts` — `POST /api/admin/casas` (UC-A02) | ✅ — primeira rota a chamar `exigirAdmin`; `lib/db.ts#criarCasa` faz a transação (slug + casa + preços padrão) |
 | `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`, `lib/log.ts` | ⬜ |
 | `handlers/api-publica.ts` — `GET /api/casas`, `GET /api/casas/{slug}` | ⬜ — próximas entregas da Fase 1 |
-| `handlers/api-admin.ts` (ainda ninguém chama `exigirAdmin`), `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
+| `handlers/api-admin.ts` — `GET`/`PUT`/`DELETE /api/admin/casas{,/{casaId}}`, `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
 | `templates/` | ⬜ |

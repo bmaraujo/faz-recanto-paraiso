@@ -10,7 +10,7 @@
  * duplicar na Lambda so criaria dois lugares para a politica divergir.
  */
 
-import type { APIGatewayProxyStructuredResultV2 } from "aws-lambda";
+import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
 
 const CABECALHOS_JSON = { "content-type": "application/json; charset=utf-8" };
 
@@ -43,4 +43,21 @@ export function respostaErro(
   detalhes: Record<string, unknown> = {},
 ): APIGatewayProxyStructuredResultV2 {
   return respostaJson(statusCode, { erro, mensagem, detalhes });
+}
+
+/**
+ * Decodifica `evento.body`, cuidando do `isBase64Encoded` da Function URL.
+ * `undefined` para corpo ausente ou base64 inválido — compartilhado por toda
+ * rota que recebe JSON (`POST /api/cotacao`, `POST /api/admin/casas`...), para
+ * as duas nunca divergirem em como tratam esse detalhe do payload v2.0.
+ */
+export function decodificarCorpo(evento: APIGatewayProxyEventV2): string | undefined {
+  if (evento.body === undefined) return undefined;
+  if (!evento.isBase64Encoded) return evento.body;
+
+  try {
+    return Buffer.from(evento.body, "base64").toString("utf8");
+  } catch {
+    return undefined;
+  }
 }
