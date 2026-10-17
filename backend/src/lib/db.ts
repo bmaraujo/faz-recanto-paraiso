@@ -463,3 +463,55 @@ export async function consultarOcupacoes(
 
   return itens;
 }
+
+/**
+ * `Query PK = OCUPACAO#<casaId>, SK >= NOITE#<deInclusive>`, sem limite
+ * superior — `Limit: 1` porque só interessa saber se existe, não quantas
+ * (UC-A02, "Implementação" → "Exclusão", passo 2: "se houver qualquer
+ * ocupação futura, 409"). Cobre reserva, bloqueio e importação de iCal pela
+ * mesma `PK` — nenhum desses UCs escreve `OCUPACAO#` ainda, então hoje isto
+ * sempre devolve `false`, mas a verificação já é real, não um placeholder.
+ */
+export async function existeOcupacaoFutura(casaId: string, deInclusive: string): Promise<boolean> {
+  const resultado = await documentoDb.send(
+    new QueryCommand({
+      TableName: nomeTabela(),
+      KeyConditionExpression: "PK = :pk AND SK >= :de",
+      ExpressionAttributeValues: { ":pk": `OCUPACAO#${casaId}`, ":de": `NOITE#${deInclusive}` },
+      ProjectionExpression: "SK",
+      Limit: 1,
+    }),
+  );
+  return (resultado.Items?.length ?? 0) > 0;
+}
+
+/**
+ * `DELETE /api/admin/casas/{casaId}` (UC-A02, RN14): apaga a casa, os preços
+ * e o índice de slug numa única transação. `existeOcupacaoFutura` (RN14) já
+ * foi checado pelo handler antes de chamar isto — aqui não há condição além
+ * de `attribute_exists(PK)` no item principal, defesa contra uma exclusão
+ * concorrente que já tenha apagado a mesma casa.
+ *
+ * O que o UC pede e ainda não é feito aqui: apagar as fotos do S3
+ * (`lib/s3.ts` não existe — UC-A03) e as ocupações passadas em lote
+ * (sempre vazio hoje, pelo mesmo motivo de `existeOcupacaoFutura`). Os dois
+ * são "best-effort" no próprio texto do UC — não bloqueiam a exclusão do
+ * item principal, por isso ficam para quando houver o que de fato limpar.
+ */
+export async function excluirCasa(casa: Pick<Casa, "casaId" | "slug">): Promise<void> {
+  await documentoDb.send(
+    new TransactWriteCommand({
+      TransactItems: [
+        {
+          Delete: {
+            TableName: nomeTabela(),
+            Key: chaveCasa(casa.casaId),
+            ConditionExpression: "attribute_exists(PK)",
+          },
+        },
+        { Delete: { TableName: nomeTabela(), Key: chavePrecos(casa.casaId) } },
+        { Delete: { TableName: nomeTabela(), Key: chaveSlug(casa.slug) } },
+      ],
+    }),
+  );
+}
