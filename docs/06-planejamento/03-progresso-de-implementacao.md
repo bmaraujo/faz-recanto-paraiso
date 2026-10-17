@@ -35,10 +35,11 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 13 | 2026-10-14 | 1 | UC-A13 | `GET /api/config-publica` — projeção pública de `CONFIG/GERAL` (RN14) + `obterConfigGeral` único em `lib/db.ts` (substitui `obterConfigGeralCotacao`) | `fe41158` |
 | 14 | 2026-10-14 | 0 | UC-A01 | `infra/` nasce: stacks `dados` (DynamoDB + SSM) e `auth` (Cognito User Pool, App Client, domínio, grupo `admin`), com testes de infraestrutura (`aws-cdk-lib/assertions`) | `7374dcc` |
 | 15 | 2026-10-14 | 1 | UC-A01 | `backend/src/lib/auth.ts` (`exigirAdmin`) + `lib/erros.ts` (`ErroHttp`) — verifica o JWT do Cognito, testado com JWKS de teste local via `cacheJwks` | `70bc948` |
-| 16 | 2026-10-17 | 1 | UC-A02 | Tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`) em `dominio/casas.ts`; `ESTADOS_CASA` extraído como fonte única do enum, compartilhado com `statusCasaSchema` | _pendente_ |
+| 16 | 2026-10-17 | 1 | UC-A02 | Tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`) em `dominio/casas.ts`; `ESTADOS_CASA` extraído como fonte única do enum, compartilhado com `statusCasaSchema` | `a60bc95` |
+| 17 | 2026-10-17 | 1 | UC-A02 | `POST /api/admin/casas` — `handlers/api-admin.ts` nasce; `lib/db.ts#criarCasa` (transação com unicidade de slug, RN3); `decodificarCorpo` movido para `lib/http.ts`, compartilhado com `api-publica.ts` | _pendente_ |
 
-**Estado em `main` agora:** `e272f67` (merge do PR #9, `lib/auth.ts`/`lib/erros.ts`).
-A entrega 16 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
+**Estado em `main` agora:** `ba02f10` (merge do PR #10, tipo `Casa` completo).
+A entrega 17 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
 executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta real
 `627010764306`.
 
@@ -61,21 +62,23 @@ executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a cont
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 40 testes de unidade + 11 de integração (DynamoDB Local)
+### `backend/` — 51 testes de unidade + 14 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
 | `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao`, `GET /api/config-publica` |
+| `handlers/api-admin.ts` | `POST /api/admin/casas` (UC-A02) — primeira rota do backoffice; `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
 | `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts`, `configGeral.ts`) — nunca duplica lógica |
-| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada) |
-| `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato |
-| `lib/auth.ts` (`exigirAdmin`, `criarVerificadorAdmin`) + `lib/erros.ts` (`ErroHttp`) | Verificação do JWT do Cognito (UC-A01) — `aws-jwt-verify`. Ainda não consumida por nenhum handler (`api-admin.ts` não existe) |
-| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
+| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3) |
+| `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato, `decodificarCorpo` (compartilhado por toda rota que recebe JSON) |
+| `lib/auth.ts` (`exigirAdmin`, `criarVerificadorAdmin`) + `lib/erros.ts` (`ErroHttp`) | Verificação do JWT do Cognito (UC-A01) — `aws-jwt-verify`. Consumida por `handlers/api-admin.ts` |
+| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts`, `admin-casas.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
 **Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`,
-`lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`; `handlers/api-admin.ts`
-(quem efetivamente chama `exigirAdmin`), `cron-diario.ts`, `cron-ical.ts`,
-`publicar-conteudo.ts`; `templates/`.
+`lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`; o resto de
+`api-admin.ts` (`GET`/`PUT`/`DELETE /api/admin/casas{,/{casaId}}`,
+`POST .../status`); `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`;
+`templates/`.
 
 ### `infra/` — 29 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
@@ -205,6 +208,36 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     `["RASCUNHO", "ATIVA", "INATIVA"]`) saiu de `statusCasaSchema` para
     `dominio/casas.ts` para não duplicar a enumeração em si, só a forma do
     objeto.
+16. **O verificador do Cognito em `api-admin.ts` nasce de forma *lazy*, não em
+    escopo de módulo.** `criarVerificadorAdmin()` lança de forma síncrona se
+    `USER_POOL_ID`/`USER_POOL_CLIENT_ID` não estiverem no ambiente (ver
+    decisão 12-14); chamá-la no topo do arquivo quebraria a importação do
+    handler em todo teste e no bundle do esbuild, onde essas variáveis não
+    existem. `obterVerificadorAdmin()` guarda o resultado num `let` de módulo
+    e só constrói na primeira invocação real — o container Lambda ainda
+    reaproveita o cache de JWKS entre requisições, só adia a construção para
+    quando o ambiente garantidamente já tem as variáveis.
+17. **Preços padrão de uma casa nova não têm uma flag `validado` separada.**
+    O contrato do UC-A02 menciona "`validado: false`" na criação, mas
+    `ConfigPrecos` não tem esse campo — e não precisa: `diariaBaseCentavos: 0`
+    já falha `validarConfigPrecos` por conta própria ("a diária base precisa
+    ser maior que zero"), o que basta para `avaliarCompletudeParaAtivar`
+    (RN7) saber que a casa não está pronta. Inventar um campo fora do tipo
+    existente só para replicar uma frase do contrato seria duplicar uma
+    informação que o próprio cálculo já produz.
+18. **`handlers/api-admin.ts` testado com `exigirAdmin` mockado, tanto na
+    unidade quanto na integração.** A verificação real do JWT (assinatura,
+    `iss`, `client_id`, `cognito:groups`) já tem cobertura própria e real em
+    `test/unit/lib/auth.test.ts` via `cacheJwks`; o teste de integração deste
+    handler teria que recriar esse mesmo aparato só para autenticar, sem
+    testar nada de autenticação que não esteja testado ali — o que importa
+    testar contra o DynamoDB Local de verdade é a transação (`criarCasa`),
+    não o `exigirAdmin` por cima dela de novo.
+19. **ULID gerado pela biblioteca `ulid` (npm), não por um gerador próprio.**
+    `ulidSchema` já documentava "bibliotecas de ULID geram em maiúsculas por
+    convenção" antes de existir qualquer gerador — `ulid()` produz exatamente
+    o formato de 26 caracteres Crockford base32 que o schema valida, sem
+    dependências transitivas.
 
 ---
 
@@ -222,16 +255,12 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   gerado estaticamente a partir de `_dados/*.json`. Precisam ser revisados para
   refletir a API viva antes de `site/` nascer, senão quem implementar o
   frontend parte de um desenho que já não é o decidido.
-- **`lib/auth.ts` existe, mas nenhum handler o usa ainda.** `exigirAdmin` está
-  pronto e testado; falta `handlers/api-admin.ts` (que não existe) chamá-lo em
-  toda rota de `/api/admin/*`, antes de qualquer leitura (RN8). Candidato
-  natural a vir junto da primeira rota de UC-A02.
-- **UC-A02 (CRUD de casas) continua maior que as rotas já construídas**: o
-  tipo `Casa` e `exigirAdmin` já existem (resolvidos nesta entrega e na
-  anterior); falta `handlers/api-admin.ts` de verdade, com `TransactWriteItems`
-  na criação (unicidade de slug via `SLUG#<slug>/META`) e controle de versão
-  otimista no `PUT` (E9) — mais próximo em risco de `POST /api/solicitacoes`
-  (Fase 2) do que das rotas de leitura já feitas.
+- **UC-A02 (CRUD de casas) só tem a rota de criação.** `POST /api/admin/casas`
+  está pronto (entrega 17); faltam `GET /api/admin/casas`, `GET
+  .../{casaId}`, `PUT .../{casaId}` (com controle de versão otimista, E9),
+  `POST .../{casaId}/status` (RN7) e `DELETE .../{casaId}` (RN14, valida
+  reservas ativas). `PUT` é a próxima com risco real (a condição de versão),
+  o resto é majoritariamente leitura.
 
 ### Resolvidas nesta entrega
 
@@ -257,8 +286,12 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   `401`/`403` correta (ver decisão 13) e testado sem Cognito real (decisão 14).
 - ~~UC-A02 exige um tipo `Casa` completo que ainda não existe~~ — construído
   (entrega 16): `Casa`, `Foto`, `Cama`, `Localizacao`, `Distancia` e
-  `StatusCasa`/`ESTADOS_CASA` em `dominio/casas.ts` (ver decisão 15). Ainda
-  falta `handlers/api-admin.ts` consumir o tipo — ver acima.
+  `StatusCasa`/`ESTADOS_CASA` em `dominio/casas.ts` (ver decisão 15).
+- ~~`lib/auth.ts` existe, mas nenhum handler o usa ainda~~ — construído
+  (entrega 17): `handlers/api-admin.ts` nasce com `POST /api/admin/casas`,
+  chamando `exigirAdmin` antes de qualquer roteamento (RN8). `lib/db.ts#criarCasa`
+  faz a transação de criação (slug, casa, preços padrão) e mapeia a condição
+  de slug falhada para `409 SLUG_EM_USO` (ver decisões 16-19).
 
 ## Comandos de referência
 

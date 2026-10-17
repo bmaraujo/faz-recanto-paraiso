@@ -59,7 +59,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `backend` — `GET /api/config-publica` | ✅ 4 testes unidade + 2 integração (UC-A13) |
 | `backend` — `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` | ✅ 11 testes unidade (JWKS de teste local, sem Cognito real) |
 | `backend` — demais rotas de Fase 1 (`GET /api/casas`, `GET /api/casas/{slug}`) | ⬜ — próxima entrega sem bloqueio |
-| `backend` — UC-A02 (CRUD de casas, `api-admin.ts`) | ⬜ — tipo `Casa` e `exigirAdmin` já existem, falta o handler (transação de criação + versão otimista) |
+| `backend` — `POST /api/admin/casas` (UC-A02, `api-admin.ts`) | ✅ 11 testes unidade + 3 integração (unicidade de slug sob concorrência real) |
+| `backend` — demais rotas de UC-A02 (`GET`/`PUT`/`DELETE /api/admin/casas{,/{casaId}}`) | ⬜ — `PUT` traz o controle de versão otimista (E9) |
 | `infra` — stacks `dados` (DynamoDB) e `auth` (Cognito, UC-A01) | ✅ 29 testes · ⚠️ ainda sem `cdk deploy` |
 | `infra` — `stack-backend`, `stack-frontend`, `stack-observabilidade` | ⬜ |
 | `site/` | ⬜ |

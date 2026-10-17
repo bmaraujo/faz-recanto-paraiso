@@ -40,7 +40,7 @@ import {
   obterStatusCasa,
   type ItemOcupacao,
 } from "../lib/db";
-import { respostaErro, respostaJson } from "../lib/http";
+import { decodificarCorpo, respostaErro, respostaJson } from "../lib/http";
 
 const ROTA_DISPONIBILIDADE = /^\/api\/casas\/([^/]+)\/disponibilidade$/;
 
@@ -215,16 +215,4 @@ async function respostaConfigPublica(): Promise<APIGatewayProxyStructuredResultV
   return respostaJson(200, projetarConfigGeralPublica(configGeral), {
     "cache-control": "public, max-age=300",
   });
-}
-
-/** `undefined` para corpo ausente ou inválido em `isBase64Encoded`. */
-function decodificarCorpo(evento: APIGatewayProxyEventV2): string | undefined {
-  if (evento.body === undefined) return undefined;
-  if (!evento.isBase64Encoded) return evento.body;
-
-  try {
-    return Buffer.from(evento.body, "base64").toString("utf8");
-  } catch {
-    return undefined;
-  }
 }
