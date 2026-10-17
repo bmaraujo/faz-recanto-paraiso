@@ -28,7 +28,7 @@ function templateEstavel(stack: Stack): unknown {
 }
 
 describe.each(["dev", "prod"] as const)("stage %s", (stage) => {
-  const { dados, auth } = sintetizar(stage);
+  const { dados, auth, frontend } = sintetizar(stage);
 
   it("stack dados", () => {
     expect(templateEstavel(dados)).toMatchSnapshot();
@@ -36,5 +36,9 @@ describe.each(["dev", "prod"] as const)("stage %s", (stage) => {
 
   it("stack auth", () => {
     expect(templateEstavel(auth)).toMatchSnapshot();
+  });
+
+  it("stack frontend", () => {
+    expect(templateEstavel(frontend)).toMatchSnapshot();
   });
 });

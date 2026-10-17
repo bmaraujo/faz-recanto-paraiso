@@ -46,16 +46,19 @@ npm test                                       # testes de infraestrutura
 |---|---|
 | `stack-dados` (tabela, GSI1, TTL, SSM `site-url`) | ✅ |
 | `stack-auth` (User Pool, App Client PKCE, domínio, grupo `admin` — UC-A01) | ✅ |
+| `stack-frontend` — só o bucket S3 (UC-A03), sem nome fixado (único globalmente) | ✅ |
 | `config/dev.ts`, `config/prod.ts` | ✅ |
-| `test/custo.test.ts`, `test/retencao.test.ts`, `test/seguranca.test.ts`, `test/snapshot.test.ts` | ✅ 29 testes, cobrindo as duas stacks acima |
-| `test/cache.test.ts` | ⬜ — nasce com `stack-frontend` (não há `CachePolicy` ainda) |
-| `stack-backend`, `stack-frontend`, `stack-observabilidade` | ⬜ |
+| `test/custo.test.ts`, `test/retencao.test.ts`, `test/seguranca.test.ts`, `test/snapshot.test.ts` | ✅ 35 testes, cobrindo as três stacks acima |
+| `test/cache.test.ts` | ⬜ — nasce com a `Distribution` do CloudFront (ainda não construída) |
+| `stack-backend` | ⬜ — próxima entrega: Lambdas `api-publica`/`api-admin`, Function URLs, IAM de menor privilégio |
+| Resto de `stack-frontend` (CloudFront, ACM, Route 53, CloudFront Function, OAC) | ⬜ — depende da pendência de domínio (8.1) |
+| `stack-observabilidade` | ⬜ |
 | `constructs/lambda-node.ts`, `constructs/parametro-seguro.ts` | ⬜ — nascem com `stack-backend` |
 | **`cdk deploy` de verdade** | ⬜ — só `synth`/`diff` (somente leitura) rodaram até agora, contra a conta real `627010764306` |
 
 `siteUrl` em `config/dev.ts` aponta para `http://localhost:4321` (callback do Cognito):
-não há `stack-frontend` ainda para dar um domínio real de `dev`. Trocar quando essa
-stack nascer.
+a distribuição CloudFront ainda não existe para dar um domínio real de `dev`. Trocar
+quando ela nascer.
 
 Ver [docs/06-planejamento/03-progresso-de-implementacao.md](../docs/06-planejamento/03-progresso-de-implementacao.md)
 para o registro completo, incluindo a pegadinha de região já encontrada

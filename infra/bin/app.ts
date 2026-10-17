@@ -6,15 +6,17 @@
  * `--context stage=` é obrigatório (`carregarConfig` lança se ausente) - decide em
  * qual ambiente o deploy acontece, e não deve ter um padrão que erre silenciosamente.
  *
- * Só `dados` e `auth` existem até agora (docs/06-planejamento/03-progresso-de-implementacao.md).
- * `backend`, `frontend` e `observabilidade` nascem quando houver Lambda para
- * empacotar e site para servir.
+ * `dados`, `auth` e `frontend` (só o bucket, por agora) existem até agora
+ * (docs/06-planejamento/03-progresso-de-implementacao.md). `observabilidade`
+ * nasce quando houver o que alarmar; a parte de CloudFront/ACM/domínio de
+ * `frontend` nasce quando a pendência de domínio (8.1) for resolvida.
  */
 import * as cdk from "aws-cdk-lib";
 
 import { REGIAO_FIXA, carregarConfig, sufixoStage } from "../config/index.js";
 import { StackAuth } from "../lib/stack-auth.js";
 import { StackDados } from "../lib/stack-dados.js";
+import { StackFrontend } from "../lib/stack-frontend.js";
 
 const app = new cdk.App();
 const config = carregarConfig(app.node.tryGetContext("stage"));
@@ -33,3 +35,4 @@ const env = {
 
 new StackDados(app, sufixoStage("RecantoParaisoDados", config.stage), { config, env });
 new StackAuth(app, sufixoStage("RecantoParaisoAuth", config.stage), { config, env });
+new StackFrontend(app, sufixoStage("RecantoParaisoFrontend", config.stage), { config, env });

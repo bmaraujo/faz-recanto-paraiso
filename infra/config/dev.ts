@@ -5,5 +5,7 @@ export const configDev: ConfigStage = {
   pontoRecuperacaoContinua: false,
   protecaoContraExclusaoTabela: false,
   retemTabelaAoDestruirStack: false,
+  retemBucketAoDestruirStack: false,
+  retencaoLogDias: 7,
   siteUrl: "http://localhost:4321",
 };
