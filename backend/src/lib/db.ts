@@ -124,6 +124,42 @@ export async function obterCasa(casaId: string): Promise<Casa | undefined> {
   return validado.data;
 }
 
+/**
+ * `Query GSI1PK = CASAS` (UC-A02: `GET /api/admin/casas`), paginando até
+ * esgotar — sem `Scan`. O `GSI1` já projeta `ALL`, então cada página traz a
+ * casa inteira, sem um `GetItem` por item.
+ *
+ * O resultado já vem ordenado por `GSI1SK` (`<ordem padded>#<casaId>`), que é
+ * a própria ordem de exibição — não precisa reordenar na aplicação.
+ */
+export async function listarCasas(): Promise<Casa[]> {
+  const itens: Casa[] = [];
+  let chaveExclusiva: Record<string, unknown> | undefined;
+
+  do {
+    const pagina = await documentoDb.send(
+      new QueryCommand({
+        TableName: nomeTabela(),
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :pk",
+        ExpressionAttributeValues: { ":pk": "CASAS" },
+        ExclusiveStartKey: chaveExclusiva,
+      }),
+    );
+
+    for (const item of pagina.Items ?? []) {
+      const validado = casaArmazenadaSchema.safeParse(item);
+      if (!validado.success) {
+        throw new Error(`Item de casa na listagem com formato inválido: ${validado.error.message}`);
+      }
+      itens.push(validado.data);
+    }
+    chaveExclusiva = pagina.LastEvaluatedKey;
+  } while (chaveExclusiva !== undefined);
+
+  return itens;
+}
+
 export function chavePrecos(casaId: string): { PK: string; SK: string } {
   return { PK: `CASA#${casaId}`, SK: "PRECOS" };
 }

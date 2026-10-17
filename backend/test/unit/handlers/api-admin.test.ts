@@ -14,6 +14,7 @@ const {
   atualizarCasa,
   obterConfigPrecos,
   alterarStatusCasa,
+  listarCasas,
 } = vi.hoisted(() => ({
   exigirAdmin: vi.fn<(evento: APIGatewayProxyEventV2, verificador: unknown) => Promise<Identidade>>(),
   criarVerificadorAdmin: vi.fn(() => ({})),
@@ -23,11 +24,13 @@ const {
   obterConfigPrecos: vi.fn<(casaId: string) => Promise<ConfigPrecos | undefined>>(),
   alterarStatusCasa:
     vi.fn<(casaId: string, status: StatusCasa, atualizadoPor: string, agora: string) => Promise<void>>(),
+  listarCasas: vi.fn<() => Promise<Casa[]>>(),
 }));
 
 vi.mock("../../../src/lib/auth", () => ({ exigirAdmin, criarVerificadorAdmin }));
 vi.mock("../../../src/lib/db", () => ({
   criarCasa,
+  listarCasas,
   obterCasa,
   atualizarCasa,
   obterConfigPrecos,
@@ -126,6 +129,10 @@ const CASA_COMPLETA_PARA_ATIVAR: Casa = {
   ],
 };
 
+function eventoGet(caminho: string): APIGatewayProxyEventV2 {
+  return criarEvento("GET", caminho, { headers: { authorization: "Bearer token-de-teste" } });
+}
+
 beforeEach(() => {
   exigirAdmin.mockReset();
   criarCasa.mockReset();
@@ -133,12 +140,14 @@ beforeEach(() => {
   atualizarCasa.mockReset();
   obterConfigPrecos.mockReset();
   alterarStatusCasa.mockReset();
+  listarCasas.mockReset();
   exigirAdmin.mockResolvedValue(ADMIN);
   criarCasa.mockResolvedValue(undefined);
   obterCasa.mockResolvedValue(CASA_EXISTENTE);
   atualizarCasa.mockResolvedValue(undefined);
   obterConfigPrecos.mockResolvedValue(PRECOS_VALIDOS);
   alterarStatusCasa.mockResolvedValue(undefined);
+  listarCasas.mockResolvedValue([]);
 });
 
 describe("autenticação (RN8)", () => {
@@ -441,5 +450,62 @@ describe("POST /api/admin/casas/{casaId}/status (UC-A02, RN7)", () => {
       }),
     );
     expect(resposta.statusCode).toBe(400);
+  });
+});
+
+describe("GET /api/admin/casas (UC-A02, lista)", () => {
+  it("lista vazia quando não há casas cadastradas", async () => {
+    const resposta = await handler(eventoGet("/api/admin/casas"));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(JSON.parse(resposta.body as string)).toEqual({ casas: [] });
+  });
+
+  it("projeta os campos da lista para uma casa completa (fotos e preços válidos)", async () => {
+    listarCasas.mockResolvedValue([CASA_COMPLETA_PARA_ATIVAR]);
+    obterConfigPrecos.mockResolvedValue(PRECOS_VALIDOS);
+
+    const resposta = await handler(eventoGet("/api/admin/casas"));
+    const { casas } = JSON.parse(resposta.body as string) as { casas: Record<string, unknown>[] };
+
+    expect(casas).toHaveLength(1);
+    expect(casas[0]).toMatchObject({
+      casaId: CASA_COMPLETA_PARA_ATIVAR.casaId,
+      slug: CASA_COMPLETA_PARA_ATIVAR.slug,
+      totalFotos: 1,
+      temPrecos: true,
+      completa: true,
+      fotoPrincipalUrl: `/${CASA_COMPLETA_PARA_ATIVAR.fotos[0]?.chave}`,
+      reservasAtivas: 0,
+    });
+  });
+
+  it("completa e temPrecos ficam false quando faltam fotos e preços válidos", async () => {
+    listarCasas.mockResolvedValue([CASA_EXISTENTE]); // CASA_EXISTENTE não tem fotos
+    obterConfigPrecos.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoGet("/api/admin/casas"));
+    const { casas } = JSON.parse(resposta.body as string) as { casas: Record<string, unknown>[] };
+
+    expect(casas[0]).toMatchObject({ completa: false, temPrecos: false });
+    expect(casas[0]?.fotoPrincipalUrl).toBeUndefined();
+  });
+});
+
+describe("GET /api/admin/casas/{casaId} (UC-A02, detalhe)", () => {
+  it("responde 200 com a casa completa", async () => {
+    const resposta = await handler(eventoGet(`/api/admin/casas/${CASA_ID}`));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(obterCasa).toHaveBeenCalledWith(CASA_ID);
+    expect(JSON.parse(resposta.body as string)).toEqual(CASA_EXISTENTE);
+  });
+
+  it("responde 404 quando a casa não existe", async () => {
+    obterCasa.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoGet(`/api/admin/casas/${CASA_ID}`));
+
+    expect(resposta.statusCode).toBe(404);
   });
 });

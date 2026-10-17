@@ -38,10 +38,11 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 16 | 2026-10-17 | 1 | UC-A02 | Tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`) em `dominio/casas.ts`; `ESTADOS_CASA` extraído como fonte única do enum, compartilhado com `statusCasaSchema` | `a60bc95` |
 | 17 | 2026-10-17 | 1 | UC-A02 | `POST /api/admin/casas` — `handlers/api-admin.ts` nasce; `lib/db.ts#criarCasa` (transação com unicidade de slug, RN3); `decodificarCorpo` movido para `lib/http.ts`, compartilhado com `api-publica.ts` | `b17ca47` |
 | 18 | 2026-10-17 | 1 | UC-A02 | `PUT /api/admin/casas/{casaId}` (E9, RN4) — `lib/db.ts#obterCasa`/`atualizarCasa`; `ehEdicaoDeSlugPermitida` (RN4) em `dominio/casas.ts`; `casaArmazenadaSchema`/`fotoSchema` validam a forma na leitura | `70b1f6c` |
-| 19 | 2026-10-17 | 1 | UC-A02 | `POST /api/admin/casas/{casaId}/status` — fecha o ciclo `RASCUNHO`→`ATIVA`↔`INATIVA`; `lib/db.ts#alterarStatusCasa` incrementa `versao` atomicamente; `avaliarCompletudeParaAtivar` (RN7) valida antes de `ATIVA` | _pendente_ |
+| 19 | 2026-10-17 | 1 | UC-A02 | `POST /api/admin/casas/{casaId}/status` — fecha o ciclo `RASCUNHO`→`ATIVA`↔`INATIVA`; `lib/db.ts#alterarStatusCasa` incrementa `versao` atomicamente; `avaliarCompletudeParaAtivar` (RN7) valida antes de `ATIVA` | `e9638e6` |
+| 20 | 2026-10-17 | 1 | UC-A02 | `GET /api/admin/casas` (lista, via `GSI1`) e `GET /api/admin/casas/{casaId}` (detalhe) — `lib/db.ts#listarCasas`; `completa`/`temPrecos` calculados na resposta, `reservasAtivas` fixo em `0` até existir reserva de verdade | _pendente_ |
 
-**Estado em `main` agora:** `1dd47c1` (merge do PR #12, `PUT /api/admin/casas/{casaId}`).
-A entrega 19 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
+**Estado em `main` agora:** `11217dd` (merge do PR #13, `POST /api/admin/casas/{casaId}/status`).
+A entrega 20 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
 executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta real
 `627010764306`.
 
@@ -64,22 +65,22 @@ executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a cont
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 68 testes de unidade + 22 de integração (DynamoDB Local)
+### `backend/` — 73 testes de unidade + 26 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
 | `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao`, `GET /api/config-publica` |
-| `handlers/api-admin.ts` | `POST`/`PUT /api/admin/casas{,/{casaId}}`, `POST .../{casaId}/status` (UC-A02) — `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
+| `handlers/api-admin.ts` | `POST`/`PUT`/`GET /api/admin/casas{,/{casaId}}`, `POST .../{casaId}/status` (UC-A02) — `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
 | `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts` incl. `validarConfigPrecos`, `configGeral.ts`, `casas.ts` incl. `avaliarCompletudeParaAtivar`) — nunca duplica lógica |
-| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterCasa`/`atualizarCasa`/`alterarStatusCasa` (UC-A02, valida forma com `casaArmazenadaSchema`), `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3) |
+| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterCasa`/`listarCasas`/`atualizarCasa`/`alterarStatusCasa` (UC-A02, valida forma com `casaArmazenadaSchema`), `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3) |
 | `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato, `decodificarCorpo` (compartilhado por toda rota que recebe JSON) |
 | `lib/auth.ts` (`exigirAdmin`, `criarVerificadorAdmin`) + `lib/erros.ts` (`ErroHttp`) | Verificação do JWT do Cognito (UC-A01) — `aws-jwt-verify`. Consumida por `handlers/api-admin.ts` |
 | `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts`, `admin-casas.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
 **Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`,
-`lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`; o resto de
-`api-admin.ts` (`GET /api/admin/casas{,/{casaId}}`, `DELETE .../{casaId}`);
-`cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`.
+`lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`;
+`DELETE /api/admin/casas/{casaId}` (RN14); `cron-diario.ts`, `cron-ical.ts`,
+`publicar-conteudo.ts`; `templates/`.
 
 ### `infra/` — 29 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
@@ -287,6 +288,26 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     `admin-casas.test.ts` (integração): troca de status, depois `PUT` com a
     versão de antes da troca → `409 CONFLITO_VERSAO`, nunca um `200` que
     desfaz a troca.
+26. **`GET /api/admin/casas` paga um `GetItem` de preços por casa**, em vez de
+    um `BatchGetItem` ou de guardar `completa`/`temPrecos` no próprio item.
+    `completa`/`temPrecos` dependem de preços e fotos, que mudam em outros
+    UCs (`PRECOS`, UC-A03) sem passar por este handler — guardá-los
+    exigiria recalcular e regravar em toda escrita de preço ou foto, dois
+    lugares a mais para esquecer. Calculá-los na leitura é uma função pura
+    (`avaliarCompletudeParaAtivar`) sobre dados sempre atuais. O custo é um
+    `GetItem` extra por casa na listagem — aceitável com o número de casas de
+    uma única fazenda (poucas unidades), não escalaria para um catálogo
+    grande, mas não é esse o problema que este projeto tem.
+27. **`reservasAtivas` na listagem é hoje sempre `0`, escrito explicitamente,
+    não omitido.** Não é um valor inventado: não existe UC-P04/solicitações
+    (Fase 2) ainda, então não existe reserva nenhuma em lugar nenhum do
+    sistema — `0` é o estado real, não uma suposição. Quando esse UC nascer,
+    este campo passa a consultar de verdade (provavelmente via `GSI1` de
+    reservas por casa).
+28. **`GET /api/admin/casas` não reordena nada em código.** A ordem de
+    exibição já é a ordem do `GSI1SK` (`<ordem padded>#<casaId>`) — a mesma
+    razão de `indiceOrdemCasas` existir desde a entrega 17. Reordenar em
+    memória depois de uma `Query` já ordenada seria trabalho redundante.
 
 ---
 
@@ -304,13 +325,12 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   gerado estaticamente a partir de `_dados/*.json`. Precisam ser revisados para
   refletir a API viva antes de `site/` nascer, senão quem implementar o
   frontend parte de um desenho que já não é o decidido.
-- **UC-A02 (CRUD de casas) tem criação, edição e ativação; faltam leitura e
-  exclusão.** `POST`/`PUT /api/admin/casas{,/{casaId}}` e `POST
-  .../{casaId}/status` prontos (entregas 17-19). Faltam `GET
-  /api/admin/casas` (lista) e `GET .../{casaId}` (detalhe, com
-  `enderecoCompleto`/`tokenIcal`) — praticamente só leitura, sem risco de
-  concorrência — e `DELETE .../{casaId}` (RN14, precisa checar reservas
-  ativas antes de apagar, e o que apaga além do item: slug, fotos no S3).
+- **UC-A02 (CRUD de casas) só falta a exclusão.** Criação, edição, ativação
+  e leitura (lista e detalhe) prontas (entregas 17-20). Falta `DELETE
+  .../{casaId}` (RN14) — a única rota que ainda não existe, e a que mais
+  precisa checar coisa antes de agir: reservas ativas (quando UC-P04
+  existir — hoje sempre zero, ver decisão 27) e o que apaga além do item
+  (índice de slug, fotos no S3, best-effort).
 
 ### Resolvidas nesta entrega
 
@@ -354,6 +374,11 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   como destino (decisão 24, protege a suposição da decisão 20) e incrementa
   `versao` atomicamente para não criar um "lost update" contra um `PUT`
   concorrente (decisão 25).
+- ~~UC-A02 não tinha rota de leitura~~ — `GET /api/admin/casas` (lista) e
+  `GET .../{casaId}` (detalhe) construídos (entrega 20): a lista calcula
+  `completa`/`temPrecos` na hora, via `GSI1` (que já traz a casa inteira,
+  sem `GetItem` por item) mais um `GetItem` de preços por casa (decisão 26);
+  `reservasAtivas` é `0` até existir reserva de verdade (decisão 27).
 
 ## Comandos de referência
 

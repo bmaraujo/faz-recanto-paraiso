@@ -76,6 +76,22 @@ function alterarStatusViaHandler(casaId: string, status: string) {
   );
 }
 
+function listarCasasViaHandler() {
+  return handler(
+    criarEvento("GET", "/api/admin/casas", {
+      headers: { authorization: "Bearer token-de-teste" },
+    }),
+  );
+}
+
+function obterCasaViaHandler(casaId: string) {
+  return handler(
+    criarEvento("GET", `/api/admin/casas/${casaId}`, {
+      headers: { authorization: "Bearer token-de-teste" },
+    }),
+  );
+}
+
 const PRECOS_VALIDOS = {
   diariaBaseCentavos: 50_000,
   diariaFimDeSemanaCentavos: 65_000,
@@ -409,5 +425,72 @@ describe("POST /api/admin/casas/{casaId}/status (integração)", () => {
       new GetCommand({ TableName: TABELA, Key: { PK: `CASA#${casaId}`, SK: "META" } }),
     );
     expect(item.Item).toMatchObject({ status: "INATIVA" });
+  });
+});
+
+describe("GET /api/admin/casas{,/{casaId}} (integração)", () => {
+  beforeAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+    await criarTabela(clienteDynamoDB, TABELA);
+  });
+
+  afterAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+  });
+
+  beforeEach(() => {
+    exigirAdmin.mockReset();
+    exigirAdmin.mockResolvedValue(ADMIN);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("lista as casas via GSI1, já na ordem de exibição (campo ordem)", async () => {
+    await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-c", nome: "Casa C", ordem: 30 });
+    await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-a", nome: "Casa A", ordem: 10 });
+    await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-b", nome: "Casa B", ordem: 20 });
+
+    const resposta = await listarCasasViaHandler();
+    expect(resposta.statusCode).toBe(200);
+
+    const { casas } = JSON.parse(resposta.body as string) as { casas: { nome: string }[] };
+    expect(casas.map((c) => c.nome)).toEqual(["Casa A", "Casa B", "Casa C"]);
+  });
+
+  it("uma casa recém-criada (sem foto, preços zerados) aparece incompleta na lista", async () => {
+    await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-recente", ordem: 1 });
+
+    const resposta = await listarCasasViaHandler();
+    const { casas } = JSON.parse(resposta.body as string) as {
+      casas: { completa: boolean; temPrecos: boolean; totalFotos: number; reservasAtivas: number }[];
+    };
+
+    expect(casas[0]).toMatchObject({
+      completa: false,
+      temPrecos: false,
+      totalFotos: 0,
+      reservasAtivas: 0,
+    });
+  });
+
+  it("GET /{casaId} devolve a casa completa de verdade, incluindo tokenIcal", async () => {
+    const resposta = await criarCasaViaHandler({ ...CASA_VALIDA, slug: "casa-detalhe" });
+    const { casaId, tokenIcal } = JSON.parse(resposta.body as string) as {
+      casaId: string;
+      tokenIcal: string;
+    };
+
+    const detalhe = await obterCasaViaHandler(casaId);
+    expect(detalhe.statusCode).toBe(200);
+    expect(JSON.parse(detalhe.body as string)).toMatchObject({ casaId, tokenIcal, slug: "casa-detalhe" });
+  });
+
+  it("GET /{casaId} de uma casa inexistente responde 404", async () => {
+    const resposta = await obterCasaViaHandler("01HQNAOEXISTENTE000000001");
+    expect(resposta.statusCode).toBe(404);
   });
 });
