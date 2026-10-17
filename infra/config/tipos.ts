@@ -1,11 +1,13 @@
 /**
  * Configuração por stage — docs/03-tecnico/12-infraestrutura-cdk.md#stages.
  *
- * Só os campos que as stacks construídas até agora (`dados`, `auth`) precisam.
- * `siteUrl` aponta para `localhost` em `dev` porque `stack-frontend` (CloudFront)
- * ainda não existe — não há domínio real para registrar como callback do Cognito.
- * Trocar para a URL do CloudFront quando essa stack nascer, e para o domínio
- * `[DEFINIR]` quando a pendência 8.1 for resolvida (docs/06-planejamento/02-pendencias-definir.md).
+ * Só os campos que as stacks construídas até agora (`dados`, `auth`,
+ * `frontend` — só o bucket, ainda sem CloudFront — e `backend`) precisam.
+ * `siteUrl` aponta para `localhost` em `dev` porque a distribuição CloudFront
+ * ainda não existe (só o bucket de `stack-frontend` nasceu até agora) — não há
+ * domínio real para registrar como callback do Cognito. Trocar para a URL do
+ * CloudFront quando essa distribuição nascer, e para o domínio `[DEFINIR]`
+ * quando a pendência 8.1 for resolvida (docs/06-planejamento/02-pendencias-definir.md).
  */
 export type Stage = "dev" | "prod";
 
@@ -14,6 +16,8 @@ export interface ConfigStage {
   readonly pontoRecuperacaoContinua: boolean;
   readonly protecaoContraExclusaoTabela: boolean;
   readonly retemTabelaAoDestruirStack: boolean;
+  readonly retemBucketAoDestruirStack: boolean;
+  readonly retencaoLogDias: number;
   readonly siteUrl: string;
 }
 

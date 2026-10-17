@@ -40,10 +40,11 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 18 | 2026-10-17 | 1 | UC-A02 | `PUT /api/admin/casas/{casaId}` (E9, RN4) — `lib/db.ts#obterCasa`/`atualizarCasa`; `ehEdicaoDeSlugPermitida` (RN4) em `dominio/casas.ts`; `casaArmazenadaSchema`/`fotoSchema` validam a forma na leitura | `70b1f6c` |
 | 19 | 2026-10-17 | 1 | UC-A02 | `POST /api/admin/casas/{casaId}/status` — fecha o ciclo `RASCUNHO`→`ATIVA`↔`INATIVA`; `lib/db.ts#alterarStatusCasa` incrementa `versao` atomicamente; `avaliarCompletudeParaAtivar` (RN7) valida antes de `ATIVA` | `e9638e6` |
 | 20 | 2026-10-17 | 1 | UC-A02 | `GET /api/admin/casas` (lista, via `GSI1`) e `GET /api/admin/casas/{casaId}` (detalhe) — `lib/db.ts#listarCasas`; `completa`/`temPrecos` calculados na resposta, `reservasAtivas` fixo em `0` até existir reserva de verdade | `0e1658a` |
-| 21 | 2026-10-17 | 1 | UC-A02 | `DELETE /api/admin/casas/{casaId}` (RN14) — fecha o CRUD; `lib/db.ts#excluirCasa`/`existeOcupacaoFutura` (verificação real sobre `OCUPACAO#`, não um placeholder, mesmo sem reserva/bloqueio ainda escrevendo lá) | _pendente_ |
+| 21 | 2026-10-17 | 1 | UC-A02 | `DELETE /api/admin/casas/{casaId}` (RN14) — fecha o CRUD; `lib/db.ts#excluirCasa`/`existeOcupacaoFutura` (verificação real sobre `OCUPACAO#`, não um placeholder, mesmo sem reserva/bloqueio ainda escrevendo lá) | `576902f` |
+| 22 | 2026-10-17 | 1 | UC-A03 | `infra/` ganha `stack-frontend` — só o bucket S3 (RN10/RN11 de UC-A03), sem CloudFront/ACM/domínio ainda; nome do bucket não fixado (unicidade global, diferente da tabela) | _pendente_ |
 
-**Estado em `main` agora:** `71db149` (merge do PR #14, `GET /api/admin/casas{,/{casaId}}`).
-A entrega 21 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
+**Estado em `main` agora:** `c793e1c` (merge do PR #15, `DELETE /api/admin/casas/{casaId}`).
+A entrega 22 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
 executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta real
 `627010764306`.
 
@@ -83,22 +84,24 @@ adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`. UC-A02
 (CRUD de casas) está completo.
 
-### `infra/` — 29 testes (`aws-cdk-lib/assertions`), nada deployado ainda
+### `infra/` — 35 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
 | Stack | Conteúdo |
 |---|---|
 | `stack-dados` | Tabela única (`PK`/`SK`, GSI1, TTL, `PAY_PER_REQUEST`) + parâmetro SSM `site-url` |
 | `stack-auth` | Cognito User Pool (RN1–RN3), App Client (Authorization Code + PKCE, RN4, sem segredo), domínio Hosted UI, grupo `admin` |
+| `stack-frontend` (parcial) | Só o bucket S3 (UC-A03: RN10/RN11) — bloqueio público total, TLS obrigatório, SSE-S3, `AbortIncompleteMultipartUpload` em 7 dias. Nome **não fixado** (gerado pelo CDK — bucket é único globalmente, diferente da tabela) |
 
 Config por stage em `config/dev.ts`/`config/prod.ts` (PITR, deletion protection,
-`RemovalPolicy` da tabela, `siteUrl` para os callbacks do Cognito). `siteUrl` de
-`dev` aponta para `localhost:4321` — não há `stack-frontend` (CloudFront) ainda para
-dar um domínio real.
+`RemovalPolicy` da tabela e do bucket, retenção de log, `siteUrl` para os
+callbacks do Cognito). `siteUrl` de `dev` aponta para `localhost:4321` — a
+distribuição CloudFront ainda não existe para dar um domínio real.
 
 **Ainda não construído:** `stack-backend` (Lambdas, Function URLs, IAM,
-EventBridge), `stack-frontend` (S3, CloudFront, ACM), `stack-observabilidade`
-(alarmes, Budgets, SNS); nenhum `cdk deploy` foi executado — só `synth`/`diff`
-(somente leitura).
+EventBridge); o resto de `stack-frontend` (CloudFront, ACM, Route 53,
+CloudFront Function, OAC — depende da pendência de domínio, 8.1);
+`stack-observabilidade` (alarmes, Budgets, SNS); nenhum `cdk deploy` foi
+executado — só `synth`/`diff` (somente leitura).
 
 ### `site/`
 
@@ -332,6 +335,28 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     serializam um corpo — criar uma segunda forma de resposta só para este
     caso não compensava a consistência de toda a API responder sempre o
     mesmo formato `{...}`.
+32. **UC-A03 (fotos) revelou que o bucket S3 e a Lambda `api-admin` estão
+    acoplados de um jeito que o UC-A01/Cognito não estava.** `lib/auth.ts`
+    só precisa de variáveis de ambiente e rede até o JWKS — nenhuma
+    permissão de IAM. Já o presigned POST de upload exige que a *role* de
+    execução da Lambda tenha `s3:PutObject` etc. no bucket, e isso só existe
+    anexado a um recurso Lambda real — que `stack-backend` nunca tinha
+    construído. Por isso esta entrega e a próxima constroem bucket e Lambda
+    juntos, nessa ordem, em vez de só o bucket.
+33. **Nome do bucket não é fixado (`bucketName` omitido), ao contrário da
+    tabela DynamoDB.** Nome de bucket S3 é único **globalmente**, entre todas
+    as contas AWS que existem — um nome previsível como
+    `recanto-paraiso-site-<stage>` arriscaria colidir com o bucket de outra
+    conta e falhar o deploy sem aviso prévio. Deixar o CDK gerar o nome
+    (incorporando conta, região e stack) remove essa aposta. A tabela não
+    tem esse risco: nomes de tabela só precisam ser únicos dentro da conta.
+34. **`autoDeleteObjects: true` só em `dev`, nunca condicionado a nada além
+    de `retemBucketAoDestruirStack`.** Isso injeta um recurso Lambda
+    gerenciado pelo próprio CDK (um custom resource) que esvazia o bucket
+    antes do `cdk destroy` — por isso a política do bucket em `dev` tem dois
+    `Statement` (TLS obrigatório + a permissão desse custom resource), não
+    um só; os testes de segurança usam `Match.arrayWith` por essa razão, não
+    um array exato.
 
 ---
 
@@ -350,10 +375,14 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   refletir a API viva antes de `site/` nascer, senão quem implementar o
   frontend parte de um desenho que já não é o decidido.
 - **UC-A02 (CRUD de casas) está completo.** Criação, edição, ativação,
-  leitura e exclusão prontas (entregas 17-21). O próximo UC de backoffice
-  é uma escolha nova — UC-A03 (fotos), UC-A04 (preços) e UC-A13 (config
-  geral) são os candidatos mais próximos; nenhum tem código ainda além
-  do que já existe em `packages/shared` (tipos/schemas).
+  leitura e exclusão prontas (entregas 17-21).
+- **UC-A03 (fotos) está em andamento, começando pela infra que faltava.**
+  O bucket (entrega 22) está pronto; falta `stack-backend` (Lambdas
+  `api-publica`/`api-admin`, Function URLs, IAM de menor privilégio real —
+  só o que o código de hoje usa, não a tabela completa do documento, que
+  antecipa SES/EventBridge/cron ainda não construídos) e, só depois disso,
+  as cinco rotas do UC-A03 em si (`upload`, registro, reordenar, editar,
+  excluir).
 
 ### Resolvidas nesta entrega
 

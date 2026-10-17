@@ -19,11 +19,12 @@ const TIPOS_PROIBIDOS = [
 ];
 
 describe.each(["dev", "prod"] as const)("stage %s", (stage) => {
-  const { dados, auth } = sintetizar(stage);
+  const { dados, auth, frontend } = sintetizar(stage);
 
   it.each(TIPOS_PROIBIDOS)("não contém %s em nenhuma stack construída", (tipo) => {
     Template.fromStack(dados).resourceCountIs(tipo, 0);
     Template.fromStack(auth).resourceCountIs(tipo, 0);
+    Template.fromStack(frontend).resourceCountIs(tipo, 0);
   });
 
   it("DynamoDB é PAY_PER_REQUEST (nunca provisionado)", () => {

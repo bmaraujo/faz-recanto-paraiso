@@ -45,3 +45,20 @@ describe("User Pool", () => {
     }
   });
 });
+
+describe("bucket em dev", () => {
+  it("tem DeletionPolicy Delete (destrutível, sem conteúdo real ainda)", () => {
+    const template = Template.fromStack(sintetizar("dev").frontend);
+    template.hasResource("AWS::S3::Bucket", { DeletionPolicy: "Delete" });
+  });
+});
+
+describe("bucket em prod", () => {
+  it("tem DeletionPolicy Retain (um `cdk destroy` não pode apagar as fotos de verdade)", () => {
+    const template = Template.fromStack(sintetizar("prod").frontend);
+    template.hasResource("AWS::S3::Bucket", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+    });
+  });
+});

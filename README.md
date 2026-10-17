@@ -60,8 +60,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `backend` — `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` | ✅ 11 testes unidade (JWKS de teste local, sem Cognito real) |
 | `backend` — demais rotas de Fase 1 (`GET /api/casas`, `GET /api/casas/{slug}`) | ⬜ — próxima entrega sem bloqueio |
 | `backend` — CRUD completo de casas: `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}` + `POST .../status` (UC-A02, `api-admin.ts`) | ✅ 36 testes unidade + 19 integração (concorrência real: slug, versão, ocupação) |
-| `infra` — stacks `dados` (DynamoDB) e `auth` (Cognito, UC-A01) | ✅ 29 testes · ⚠️ ainda sem `cdk deploy` |
-| `infra` — `stack-backend`, `stack-frontend`, `stack-observabilidade` | ⬜ |
+| `infra` — stacks `dados` (DynamoDB), `auth` (Cognito, UC-A01) e `frontend` (bucket S3, UC-A03) | ✅ 35 testes · ⚠️ ainda sem `cdk deploy` |
+| `infra` — `stack-backend` (Lambdas), resto de `stack-frontend` (CloudFront), `stack-observabilidade` | ⬜ |
 | `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências
