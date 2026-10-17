@@ -67,6 +67,42 @@ function atualizarCasaViaHandler(casaId: string, corpo: unknown) {
   );
 }
 
+function alterarStatusViaHandler(casaId: string, status: string) {
+  return handler(
+    criarEvento("POST", `/api/admin/casas/${casaId}/status`, {
+      headers: { authorization: "Bearer token-de-teste" },
+      body: JSON.stringify({ status }),
+    }),
+  );
+}
+
+const PRECOS_VALIDOS = {
+  diariaBaseCentavos: 50_000,
+  diariaFimDeSemanaCentavos: 65_000,
+  diasFimDeSemana: ["SEX", "SAB"],
+  temporadas: [],
+  feriados: [],
+  minNoitesPadrao: 2,
+  maxNoites: 60,
+  taxaLimpezaCentavos: 25_000,
+  hospedesInclusos: 6,
+  capacidadeMaxima: 8,
+  valorHospedeExtraPorNoiteCentavos: 5_000,
+};
+
+const FOTO_PRINCIPAL = {
+  fotoId: "01HQ9999999999999999999999".slice(0, 26),
+  chave: "midia/casas/fachada.webp",
+  largura: 1600,
+  altura: 1067,
+  bytes: 184_320,
+  legenda: "Fachada",
+  textoAlternativo: "Casa de madeira vista do lago",
+  ordem: 10,
+  principal: true,
+  enviadaEm: "2026-10-11T18:04:00-03:00",
+};
+
 describe("POST /api/admin/casas (integração)", () => {
   beforeAll(async () => {
     await apagarTabela(clienteDynamoDB, TABELA);
@@ -276,5 +312,102 @@ describe("PUT /api/admin/casas/{casaId} (integração)", () => {
       new GetCommand({ TableName: TABELA, Key: chaveSlug("slug-fixo") }),
     );
     expect(slugOriginal.Item).toMatchObject({ casaId });
+  });
+});
+
+describe("POST /api/admin/casas/{casaId}/status (integração)", () => {
+  beforeAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+    await criarTabela(clienteDynamoDB, TABELA);
+  });
+
+  afterAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+  });
+
+  beforeEach(() => {
+    exigirAdmin.mockReset();
+    exigirAdmin.mockResolvedValue(ADMIN);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function criarCasaDeTeste(slug: string): Promise<{ casaId: string; versao: number }> {
+    const resposta = await criarCasaViaHandler({ ...CASA_VALIDA, slug });
+    return JSON.parse(resposta.body as string) as { casaId: string; versao: number };
+  }
+
+  it("9: ativa uma casa com fotos e preços reais, incrementando a versao de verdade", async () => {
+    const { casaId, versao } = await criarCasaDeTeste("casa-pronta-para-ativar");
+
+    await documentoDb.send(
+      new UpdateCommand({
+        TableName: TABELA,
+        Key: { PK: `CASA#${casaId}`, SK: "META" },
+        UpdateExpression: "SET fotos = :fotos",
+        ExpressionAttributeValues: { ":fotos": [FOTO_PRINCIPAL] },
+      }),
+    );
+    await documentoDb.send(
+      new UpdateCommand({
+        TableName: TABELA,
+        Key: { PK: `CASA#${casaId}`, SK: "PRECOS" },
+        UpdateExpression:
+          "SET diariaBaseCentavos = :diaria, hospedesInclusos = :hi, capacidadeMaxima = :cm, maxNoites = :mn, minNoitesPadrao = :mnp",
+        ExpressionAttributeValues: {
+          ":diaria": PRECOS_VALIDOS.diariaBaseCentavos,
+          ":hi": PRECOS_VALIDOS.hospedesInclusos,
+          ":cm": PRECOS_VALIDOS.capacidadeMaxima,
+          ":mn": PRECOS_VALIDOS.maxNoites,
+          ":mnp": PRECOS_VALIDOS.minNoitesPadrao,
+        },
+      }),
+    );
+
+    const resposta = await alterarStatusViaHandler(casaId, "ATIVA");
+
+    expect(resposta.statusCode).toBe(200);
+    const item = await documentoDb.send(
+      new GetCommand({ TableName: TABELA, Key: { PK: `CASA#${casaId}`, SK: "META" } }),
+    );
+    expect(item.Item).toMatchObject({ status: "ATIVA", versao: versao + 1 });
+  });
+
+  it("6/7: casa recém-criada (sem foto, preços zerados) não pode ativar — 422", async () => {
+    const { casaId } = await criarCasaDeTeste("casa-incompleta");
+
+    const resposta = await alterarStatusViaHandler(casaId, "ATIVA");
+
+    expect(resposta.statusCode).toBe(422);
+    const corpo = JSON.parse(resposta.body as string) as { detalhes: { faltando: string[] } };
+    expect(corpo.detalhes.faltando).toContain("fotos");
+    expect(corpo.detalhes.faltando).toContain("precos");
+  });
+
+  it("decisão 22: status muda a versao de verdade, então um PUT concorrente com a versao antiga falha (não sobrescreve o status)", async () => {
+    const { casaId, versao } = await criarCasaDeTeste("casa-corrida-com-status");
+
+    // Simula o PUT tendo lido a versao antes da troca de status abaixo.
+    const statusAlterado = await alterarStatusViaHandler(casaId, "INATIVA");
+    expect(statusAlterado.statusCode).toBe(200);
+
+    const putComVersaoAntiga = await atualizarCasaViaHandler(casaId, {
+      ...CASA_VALIDA,
+      slug: "casa-corrida-com-status",
+      versao, // a versao de antes da troca de status — já está obsoleta
+    });
+
+    expect(putComVersaoAntiga.statusCode).toBe(409);
+    expect(JSON.parse(putComVersaoAntiga.body as string)).toMatchObject({ erro: "CONFLITO_VERSAO" });
+
+    // O status trocado por alterarStatusViaHandler continua de pé.
+    const item = await documentoDb.send(
+      new GetCommand({ TableName: TABELA, Key: { PK: `CASA#${casaId}`, SK: "META" } }),
+    );
+    expect(item.Item).toMatchObject({ status: "INATIVA" });
   });
 });

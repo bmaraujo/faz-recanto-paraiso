@@ -59,8 +59,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `backend` — `GET /api/config-publica` | ✅ 4 testes unidade + 2 integração (UC-A13) |
 | `backend` — `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` | ✅ 11 testes unidade (JWKS de teste local, sem Cognito real) |
 | `backend` — demais rotas de Fase 1 (`GET /api/casas`, `GET /api/casas/{slug}`) | ⬜ — próxima entrega sem bloqueio |
-| `backend` — `POST`/`PUT /api/admin/casas{,/{casaId}}` (UC-A02, `api-admin.ts`) | ✅ 20 testes unidade + 8 integração (unicidade de slug e versão sob concorrência real) |
-| `backend` — demais rotas de UC-A02 (`GET /api/admin/casas{,/{casaId}}`, `POST .../status`, `DELETE .../{casaId}`) | ⬜ |
+| `backend` — `POST`/`PUT /api/admin/casas{,/{casaId}}` + `POST .../status` (UC-A02, `api-admin.ts`) | ✅ 28 testes unidade + 11 integração (unicidade de slug e versão sob concorrência real) |
+| `backend` — demais rotas de UC-A02 (`GET /api/admin/casas{,/{casaId}}`, `DELETE .../{casaId}`) | ⬜ |
 | `infra` — stacks `dados` (DynamoDB) e `auth` (Cognito, UC-A01) | ✅ 29 testes · ⚠️ ainda sem `cdk deploy` |
 | `infra` — `stack-backend`, `stack-frontend`, `stack-observabilidade` | ⬜ |
 | `site/` | ⬜ |

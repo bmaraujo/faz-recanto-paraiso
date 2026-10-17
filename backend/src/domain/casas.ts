@@ -3,4 +3,9 @@
  * `domain/disponibilidade.ts`: `handlers/` importa sempre de `../domain/*`, nunca
  * direto do pacote compartilhado.
  */
-export { ehEdicaoDeSlugPermitida } from "@recanto/shared";
+export {
+  avaliarCompletudeParaAtivar,
+  ehEdicaoDeSlugPermitida,
+  type DadosParaAtivacao,
+  type ResultadoCompletudeAtivacao,
+} from "@recanto/shared";
