@@ -6,15 +6,21 @@
  * `--context stage=` é obrigatório (`carregarConfig` lança se ausente) - decide em
  * qual ambiente o deploy acontece, e não deve ter um padrão que erre silenciosamente.
  *
- * `dados`, `auth` e `frontend` (só o bucket, por agora) existem até agora
+ * `dados`, `auth`, `frontend` (só o bucket, por agora) e `backend` (só as
+ * Lambdas `api-publica`/`api-admin`, por agora) existem até agora
  * (docs/06-planejamento/03-progresso-de-implementacao.md). `observabilidade`
  * nasce quando houver o que alarmar; a parte de CloudFront/ACM/domínio de
  * `frontend` nasce quando a pendência de domínio (8.1) for resolvida.
+ *
+ * **Pré-requisito de `backend`:** `npm run build -w backend` precisa ter
+ * rodado antes — a Lambda empacota `backend/dist/handlers`, não recompila
+ * nada (ver `lib/constructs/lambda-node.ts`).
  */
 import * as cdk from "aws-cdk-lib";
 
 import { REGIAO_FIXA, carregarConfig, sufixoStage } from "../config/index.js";
 import { StackAuth } from "../lib/stack-auth.js";
+import { StackBackend } from "../lib/stack-backend.js";
 import { StackDados } from "../lib/stack-dados.js";
 import { StackFrontend } from "../lib/stack-frontend.js";
 
@@ -33,6 +39,17 @@ const env = {
   region: REGIAO_FIXA,
 };
 
-new StackDados(app, sufixoStage("RecantoParaisoDados", config.stage), { config, env });
-new StackAuth(app, sufixoStage("RecantoParaisoAuth", config.stage), { config, env });
-new StackFrontend(app, sufixoStage("RecantoParaisoFrontend", config.stage), { config, env });
+const dados = new StackDados(app, sufixoStage("RecantoParaisoDados", config.stage), { config, env });
+const auth = new StackAuth(app, sufixoStage("RecantoParaisoAuth", config.stage), { config, env });
+const frontend = new StackFrontend(app, sufixoStage("RecantoParaisoFrontend", config.stage), {
+  config,
+  env,
+});
+new StackBackend(app, sufixoStage("RecantoParaisoBackend", config.stage), {
+  config,
+  env,
+  tabela: dados.tabela,
+  userPool: auth.userPool,
+  userPoolClient: auth.userPoolClient,
+  bucket: frontend.bucket,
+});
