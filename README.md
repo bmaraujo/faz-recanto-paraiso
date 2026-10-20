@@ -60,9 +60,10 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `backend` — `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` | ✅ 11 testes unidade (JWKS de teste local, sem Cognito real) |
 | `backend` — demais rotas de Fase 1 (`GET /api/casas`, `GET /api/casas/{slug}`) | ⬜ — próxima entrega sem bloqueio |
 | `backend` — CRUD completo de casas: `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}` + `POST .../status` (UC-A02, `api-admin.ts`) | ✅ 36 testes unidade + 19 integração (concorrência real: slug, versão, ocupação) |
-| `infra` — stacks `dados` (DynamoDB), `auth` (Cognito, UC-A01), `frontend` (bucket S3) e `backend` (Lambdas `api-publica`/`api-admin`, UC-A03) | ✅ 46 testes · ⚠️ ainda sem `cdk deploy` |
+| `infra` — stacks `dados` (DynamoDB), `auth` (Cognito, UC-A01), `frontend` (bucket S3) e `backend` (Lambdas `api-publica`/`api-admin`, UC-A03) | ✅ 48 testes · ⚠️ ainda sem `cdk deploy` |
 | `infra` — resto de `stack-frontend` (CloudFront), `stack-observabilidade` | ⬜ |
-| `backend` — rotas de UC-A03 (fotos: upload, registro, ordem, edição, exclusão) | ⬜ — a infra que faltava já existe |
+| `backend` — `POST /api/admin/casas/{casaId}/fotos/upload` (UC-A03, presigned POST) | ✅ 6 testes unidade + 4 integração |
+| `backend` — demais rotas de UC-A03 (registro com magic number, ordem, edição, exclusão) | ⬜ |
 | `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências

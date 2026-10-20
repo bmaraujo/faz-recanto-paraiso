@@ -4,6 +4,7 @@ import {
   type FotoParaCompletude,
   SLUG_REGEX,
   avaliarCompletudeParaAtivar,
+  construirChaveFoto,
   ehEdicaoDeSlugPermitida,
   ehUrlDeMapaPermitida,
   sugerirSlug,
@@ -191,5 +192,23 @@ describe("avaliarCompletudeParaAtivar", () => {
       precosValidos: true,
     });
     expect(resultado.faltando).toEqual(["resumo", "descricao"]);
+  });
+});
+
+describe("construirChaveFoto (UC-A03, RN11)", () => {
+  it("monta a chave sob midia/casas/<casaId>/ com a extensão do Content-Type", () => {
+    const chave = construirChaveFoto("01HQCASA", "01HRFOTO", "image/webp", "a3f9c1");
+    expect(chave).toBe("midia/casas/01HQCASA/01HRFOTO-a3f9c1.webp");
+  });
+
+  it("mapeia jpeg para a extensão .jpg e png para .png", () => {
+    expect(construirChaveFoto("c", "f", "image/jpeg", "abc123")).toBe("midia/casas/c/f-abc123.jpg");
+    expect(construirChaveFoto("c", "f", "image/png", "abc123")).toBe("midia/casas/c/f-abc123.png");
+  });
+
+  it("nunca repete a mesma chave para sufixos diferentes (RN10 — cache imutável)", () => {
+    const primeira = construirChaveFoto("c", "f", "image/webp", "111111");
+    const segunda = construirChaveFoto("c", "f", "image/webp", "222222");
+    expect(primeira).not.toBe(segunda);
   });
 });

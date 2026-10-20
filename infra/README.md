@@ -47,10 +47,10 @@ npm test                                       # testes de infraestrutura
 | `stack-dados` (tabela, GSI1, TTL, SSM `site-url`) | ✅ |
 | `stack-auth` (User Pool, App Client PKCE, domínio, grupo `admin` — UC-A01) | ✅ |
 | `stack-frontend` — só o bucket S3 (UC-A03), sem nome fixado (único globalmente) | ✅ |
-| `stack-backend` — Lambdas `api-publica`/`api-admin`, Function URL `NONE`, IAM por ação explícita (sem `dynamodb:Scan`; S3 restrito a `midia/casas/*`) | ✅ |
+| `stack-backend` — Lambdas `api-publica`/`api-admin`, Function URL `NONE`, IAM por ação explícita (sem `dynamodb:Scan`; S3 restrito a `midia/casas/*`); env `BUCKET` só na `api-admin` (UC-A03) | ✅ |
 | `constructs/lambda-node.ts` (`lambda.Function` + bundle do `backend/esbuild.config.mjs`, não `NodejsFunction`) | ✅ |
 | `config/dev.ts`, `config/prod.ts` | ✅ |
-| `test/custo.test.ts`, `test/retencao.test.ts`, `test/seguranca.test.ts`, `test/snapshot.test.ts` | ✅ 46 testes, cobrindo as quatro stacks acima |
+| `test/custo.test.ts`, `test/retencao.test.ts`, `test/seguranca.test.ts`, `test/snapshot.test.ts` | ✅ 48 testes, cobrindo as quatro stacks acima |
 | `test/cache.test.ts` | ⬜ — nasce com a `Distribution` do CloudFront (ainda não construída) |
 | `cron-diario`/`cron-ical`/`publicar-conteudo` em `stack-backend` | ⬜ — nenhum handler escrito ainda |
 | Resto de `stack-frontend` (CloudFront, ACM, Route 53, CloudFront Function, OAC) | ⬜ — depende da pendência de domínio (8.1) |

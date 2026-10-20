@@ -254,6 +254,14 @@ exports[`stage dev > stack frontend 1`] = `
         ],
       },
     },
+    "ExportsOutputRefBucket83908E7781C90AC0": {
+      "Export": {
+        "Name": "TesteFrontenddev:ExportsOutputRefBucket83908E7781C90AC0",
+      },
+      "Value": {
+        "Ref": "Bucket83908E77",
+      },
+    },
     "NomeDoBucket": {
       "Value": {
         "Ref": "Bucket83908E77",
@@ -717,6 +725,14 @@ exports[`stage prod > stack frontend 1`] = `
           "Bucket83908E77",
           "Arn",
         ],
+      },
+    },
+    "ExportsOutputRefBucket83908E7781C90AC0": {
+      "Export": {
+        "Name": "TesteFrontendprod:ExportsOutputRefBucket83908E7781C90AC0",
+      },
+      "Value": {
+        "Ref": "Bucket83908E77",
       },
     },
     "NomeDoBucket": {

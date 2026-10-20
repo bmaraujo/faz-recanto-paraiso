@@ -79,6 +79,9 @@ export class StackBackend extends cdk.Stack {
         TABELA: tabela.tableName,
         USER_POOL_ID: userPool.userPoolId,
         USER_POOL_CLIENT_ID: userPoolClient.userPoolClientId,
+        // UC-A03: presigned POST de fotos (lib/s3.ts) precisa do nome do
+        // bucket — api-publica não lê nem escreve S3, então não o recebe.
+        BUCKET: bucket.bucketName,
       },
     });
     // Tudo que api-admin escreve/lê hoje (criar/editar/ativar/excluir casa) —

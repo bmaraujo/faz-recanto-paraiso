@@ -42,57 +42,64 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 20 | 2026-10-17 | 1 | UC-A02 | `GET /api/admin/casas` (lista, via `GSI1`) e `GET /api/admin/casas/{casaId}` (detalhe) — `lib/db.ts#listarCasas`; `completa`/`temPrecos` calculados na resposta, `reservasAtivas` fixo em `0` até existir reserva de verdade | `0e1658a` |
 | 21 | 2026-10-17 | 1 | UC-A02 | `DELETE /api/admin/casas/{casaId}` (RN14) — fecha o CRUD; `lib/db.ts#excluirCasa`/`existeOcupacaoFutura` (verificação real sobre `OCUPACAO#`, não um placeholder, mesmo sem reserva/bloqueio ainda escrevendo lá) | `576902f` |
 | 22 | 2026-10-17 | 1 | UC-A03 | `infra/` ganha `stack-frontend` — só o bucket S3 (RN10/RN11 de UC-A03), sem CloudFront/ACM/domínio ainda; nome do bucket não fixado (unicidade global, diferente da tabela) | `efbe4f0` |
-| 23 | 2026-10-19 | 1 | UC-A03 | `infra/` ganha `stack-backend` — Lambdas `api-publica`/`api-admin` (`lib/constructs/lambda-node.ts`, `lambda.Function` + asset do `esbuild` já existente, não `NodejsFunction`), Function URLs `NONE`, IAM de menor privilégio real (sem `dynamodb:Scan`; S3 restrito a `midia/casas/*`) | _pendente_ |
+| 23 | 2026-10-19 | 1 | UC-A03 | `infra/` ganha `stack-backend` — Lambdas `api-publica`/`api-admin` (`lib/constructs/lambda-node.ts`, `lambda.Function` + asset do `esbuild` já existente, não `NodejsFunction`), Function URLs `NONE`, IAM de menor privilégio real (sem `dynamodb:Scan`; S3 restrito a `midia/casas/*`) | `bd483cf` |
+| 24 | 2026-10-20 | 1 | UC-A03 | `POST /api/admin/casas/{casaId}/fotos/upload` — primeira rota de UC-A03; `lib/s3.ts` nasce (`criarPresignedPostFoto`); `construirChaveFoto`/`TIPOS_FOTO_ACEITOS`/`LIMITE_FOTOS_POR_CASA` em `dominio/casas.ts`; `fotoUploadSchema` em `schemas/casa.ts`; `stack-backend` ganha o env `BUCKET` na `api-admin` | _pendente_ |
 
 **Estado em `main` agora:** `e37a977` (merge do PR #16, bucket de `stack-frontend`).
-A entrega 23 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy` foi
-executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta real
-`627010764306`.
+As entregas 23 e 24 estão em branches próprias, ainda não mergeadas — e
+**empilhadas**: a branch da entrega 24 nasce de cima da branch da entrega 23
+(`feat/infra-backend-lambdas`), porque esta rota só existe com `BUCKET` no
+ambiente da `api-admin`, que a entrega 23 introduziu. A entrega 23 precisa ser
+mergeada primeiro (ou a 24 mergeada nela antes). **Nenhum `cdk deploy` foi
+executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta
+real `627010764306`.
 
 ---
 
 ## O que existe hoje, por pacote
 
-### `packages/shared/` — 213 testes, 100% de cobertura em `dominio/`
+### `packages/shared/` — 222 testes, 100% de cobertura em `dominio/`
 
 | Módulo | Conteúdo |
 |---|---|
 | `dominio/datas.ts` | Aritmética de datas em `America/Sao_Paulo`: `noitesDe`, `noitesDePeriodoInclusivo`, `dtEndDeCheckout`, `hojeEmSaoPaulo`, `formatarDataPtBr`, `formatarInstanteIso` (ISO 8601 **com offset**, não `toISOString()`) |
 | `dominio/precos.ts` | `calcularCotacao` (a mesma função do navegador e do servidor), `validarConfigPrecos` |
 | `dominio/disponibilidade.ts` | `verificarDisponibilidade`, `listarNoitesOcupadas`, `noitesOcupadasEm`, `agruparNoitesContiguas`, `validarIntervaloConsulta` |
-| `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar, `ehEdicaoDeSlugPermitida` (RN4) — parte pura de UC-A02; tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`/`ESTADOS_CASA`) — a forma do item `CASA#<id>/META` persistido |
+| `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar, `ehEdicaoDeSlugPermitida` (RN4) — parte pura de UC-A02; tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`/`ESTADOS_CASA`) — a forma do item `CASA#<id>/META` persistido; `TIPOS_FOTO_ACEITOS`/`LIMITE_FOTOS_POR_CASA`/`TAMANHO_MAX_FOTO_BYTES`/`construirChaveFoto` (RN1–RN3/RN10/RN11 de UC-A03) |
 | `dominio/formato.ts` | `formatarMoeda`, `formatarValorPorNoite` |
 | `dominio/configGeral.ts` | Tipo `ConfigGeral` (forma do item completo) e `projetarConfigGeralPublica` — allowlist de RN14 (UC-A13). **Só forma**: a validação de escrita (RN1–RN16) nasce com a Fase 2 |
-| `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa (`casaEntradaSchema`/`casaEdicaoSchema`/`casaArmazenadaSchema`, esta validando o item já persistido) — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
+| `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa (`casaEntradaSchema`/`casaEdicaoSchema`/`casaArmazenadaSchema`, esta validando o item já persistido; `fotoUploadSchema`, UC-A03) — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
 
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 76 testes de unidade + 30 de integração (DynamoDB Local)
+### `backend/` — 82 testes de unidade + 34 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
 | `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao`, `GET /api/config-publica` |
-| `handlers/api-admin.ts` | CRUD completo de casas (UC-A02): `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}`, `POST .../{casaId}/status` — `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
+| `handlers/api-admin.ts` | CRUD completo de casas (UC-A02): `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}`, `POST .../{casaId}/status`; `POST .../{casaId}/fotos/upload` (UC-A03, só o presigned POST) — `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
 | `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts` incl. `validarConfigPrecos`, `configGeral.ts`, `casas.ts` incl. `avaliarCompletudeParaAtivar`) — nunca duplica lógica |
 | `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterCasa`/`listarCasas`/`atualizarCasa`/`alterarStatusCasa`/`excluirCasa`/`existeOcupacaoFutura` (UC-A02, valida forma com `casaArmazenadaSchema`), `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3) |
+| `lib/s3.ts` | Cliente S3 (singleton de módulo), `criarPresignedPostFoto` (UC-A03) — `createPresignedPost` assina a policy localmente, sem chamada de rede; coberto só por teste de integração, mesma convenção de `lib/db.ts` |
 | `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato, `decodificarCorpo` (compartilhado por toda rota que recebe JSON) |
 | `lib/auth.ts` (`exigirAdmin`, `criarVerificadorAdmin`) + `lib/erros.ts` (`ErroHttp`) | Verificação do JWT do Cognito (UC-A01) — `aws-jwt-verify`. Consumida por `handlers/api-admin.ts` |
-| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts`, `admin-casas.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
+| `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts`, `admin-casas.test.ts`, `admin-fotos.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
-**Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/s3.ts`, `lib/ical.ts`,
-`lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`;
-`cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`. UC-A02
-(CRUD de casas) está completo.
+**Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/ical.ts`,
+`lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`; as outras
+quatro rotas de UC-A03 (registro com magic number, ordem, edição, exclusão de
+foto); `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`.
+UC-A02 (CRUD de casas) está completo.
 
-### `infra/` — 46 testes (`aws-cdk-lib/assertions`), nada deployado ainda
+### `infra/` — 48 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
 | Stack | Conteúdo |
 |---|---|
 | `stack-dados` | Tabela única (`PK`/`SK`, GSI1, TTL, `PAY_PER_REQUEST`) + parâmetro SSM `site-url` |
 | `stack-auth` | Cognito User Pool (RN1–RN3), App Client (Authorization Code + PKCE, RN4, sem segredo), domínio Hosted UI, grupo `admin` |
 | `stack-frontend` (parcial) | Só o bucket S3 (UC-A03: RN10/RN11) — bloqueio público total, TLS obrigatório, SSE-S3, `AbortIncompleteMultipartUpload` em 7 dias. Nome **não fixado** (gerado pelo CDK — bucket é único globalmente, diferente da tabela) |
-| `stack-backend` (parcial) | Lambdas `api-publica`/`api-admin` via `lib/constructs/lambda-node.ts` (`lambda.Function` + o bundle que `backend/esbuild.config.mjs` já produz, não `NodejsFunction`); Function URL `NONE` nas duas; IAM por ação explícita, nunca `grantReadData`/`grantReadWriteData` (que incluem `dynamodb:Scan`); S3 da `api-admin` restrito a `midia/casas/*` via `iam.PolicyStatement` direto (`bucket.grant()` não tem escopo de prefixo) |
+| `stack-backend` (parcial) | Lambdas `api-publica`/`api-admin` via `lib/constructs/lambda-node.ts` (`lambda.Function` + o bundle que `backend/esbuild.config.mjs` já produz, não `NodejsFunction`); Function URL `NONE` nas duas; IAM por ação explícita, nunca `grantReadData`/`grantReadWriteData` (que incluem `dynamodb:Scan`); S3 da `api-admin` restrito a `midia/casas/*` via `iam.PolicyStatement` direto (`bucket.grant()` não tem escopo de prefixo); env `BUCKET` só na `api-admin` (UC-A03, `lib/s3.ts`) |
 
 Config por stage em `config/dev.ts`/`config/prod.ts` (PITR, deletion protection,
 `RemovalPolicy` da tabela e do bucket, retenção de log, `siteUrl` para os
@@ -393,6 +400,40 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     problema: o `cdk` CLI só roda de dentro de `infra/` (onde está
     `cdk.json`) e os testes deste pacote também rodam com `infra/` como
     diretório de trabalho — os dois contextos coincidem.
+39. **Esta entrega cobre só o presigned POST (`POST .../fotos/upload`), não
+    as outras quatro rotas de UC-A03.** Granularidade igual à de UC-A02 (um
+    commit por rota): o registro com verificação de magic number
+    (`POST .../fotos`) precisa ler bytes reais do objeto no S3
+    (`GetObject`/`Range`) — algo que este bucket de teste ainda não tem
+    nenhum objeto para exercitar de verdade — e fica para a próxima entrega.
+40. **A chave da foto não leva o "slug da legenda" que
+    [07 — Armazenamento de imagens](../03-tecnico/07-armazenamento-de-imagens.md)
+    ilustra** (`midia/casas/<casaId>/<fotoId>-<slug-da-legenda>-<hex>.webp`).
+    No fluxo real a legenda só é conhecida no registro (passo 6), depois que
+    o arquivo já foi enviado para a chave decidida no presigned POST (passo
+    4) — não há como incluir no nome, nesse momento, algo que ainda não
+    existe. `construirChaveFoto` gera `midia/casas/<casaId>/<fotoId>-<hex>.<ext>`,
+    igual ao exemplo do próprio contrato técnico do UC-A03 (que, sem notar,
+    já diverge da ilustração do documento 07 pelo mesmo motivo).
+41. **`bytes` do corpo de `POST .../fotos/upload` é só informativo — não é
+    validado contra o teto de 3 MB (RN3) nesta Lambda.** O próprio documento
+    07 lista essa validação como "condição da policy do S3"
+    (`content-length-range`), não como passo da Lambda; inventar uma
+    validação redundante aqui só criaria um segundo lugar para o teto
+    divergir do valor real da policy.
+42. **`lib/s3.ts` não tem teste de unidade direto — só de integração**,
+    mesma convenção de `lib/db.ts` (nenhum teste de unidade cobre suas
+    funções: são I/O puro, cobertas pelo DynamoDB Local). `createPresignedPost`
+    não faz chamada de rede (é assinatura local), então o teste de
+    integração já roda sem depender de LocalStack ou qualquer S3 real — as
+    credenciais fictícias de `vitest.integracao.config.ts`
+    (`AWS_ACCESS_KEY_ID=local`) bastam para assinar.
+43. **Os nomes de campo que `createPresignedPost` devolve (`Policy`,
+    `X-Amz-Signature`...) usam a grafia real da AWS, diferente do exemplo
+    minúsculo (`policy`, `x-amz-signature`) do contrato técnico do UC-A03.**
+    Não há como configurar essa grafia — é fixa no SDK. Funcionalmente
+    equivalente: é exatamente o que o navegador precisa reenviar ao S3, tal
+    como veio.
 
 ---
 
@@ -412,14 +453,12 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   frontend parte de um desenho que já não é o decidido.
 - **UC-A02 (CRUD de casas) está completo.** Criação, edição, ativação,
   leitura e exclusão prontas (entregas 17-21).
-- **UC-A03 (fotos): a infra que faltava está pronta — bucket (entrega 22) e
-  Lambdas `api-publica`/`api-admin` com Function URL e IAM reais (entrega
-  23).** Falta agora o próprio UC-A03: as cinco rotas (`POST .../fotos/upload`
-  com presigned POST, `POST .../fotos` de registro com verificação de magic
-  number, `PUT .../fotos/ordem`, `PUT .../fotos/{fotoId}`, `DELETE
-  .../fotos/{fotoId}`) — nenhuma delas tem código ainda, só a infra que as
-  sustenta. `lib/s3.ts` (que não existe) nasce com a primeira dessas rotas.
-  Nenhum `cdk deploy` foi feito — as quatro stacks existem só em `synth`/`diff`.
+- **UC-A03 (fotos): a primeira rota está pronta — `POST .../fotos/upload`
+  (entrega 24), sobre a infra das entregas 22-23.** Faltam as outras quatro:
+  `POST .../fotos` de registro (com `HeadObject` + verificação de magic
+  number — a próxima, decisão 39), `PUT .../fotos/ordem`, `PUT
+  .../fotos/{fotoId}`, `DELETE .../fotos/{fotoId}`. Nenhum `cdk deploy` foi
+  feito — as quatro stacks existem só em `synth`/`diff`.
 
 ### Resolvidas nesta entrega
 
@@ -482,6 +521,12 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   Confirmado via `cdk diff` (somente leitura) contra a conta real
   `627010764306`: as quatro stacks criam exatamente os recursos esperados,
   nada além.
+- ~~UC-A03 tinha a infra pronta, mas nenhuma rota construída~~ — a primeira
+  nasceu (entrega 24): `POST .../fotos/upload`. `lib/s3.ts#criarPresignedPostFoto`
+  assina a policy do S3 localmente, sem chamada de rede, por isso testável
+  em integração sem LocalStack (decisão 42); a chave vem de
+  `construirChaveFoto` (RN10/RN11), que recusa a 41ª foto (RN1) antes de
+  gerar qualquer presigned.
 
 ## Comandos de referência
 

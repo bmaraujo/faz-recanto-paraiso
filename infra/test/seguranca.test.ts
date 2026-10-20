@@ -55,6 +55,20 @@ describe.each(["dev", "prod"] as const)("stage %s", (stage) => {
     });
   });
 
+  it("api-admin recebe BUCKET (UC-A03, presigned POST); api-publica não precisa (não toca S3)", () => {
+    const template = Template.fromStack(backend);
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "api-admin.handler",
+      Environment: { Variables: Match.objectLike({ BUCKET: Match.anyValue() }) },
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "api-publica.handler",
+      Environment: {
+        Variables: Match.not(Match.objectLike({ BUCKET: Match.anyValue() })),
+      },
+    });
+  });
+
   it("a permissão de S3 da api-admin é restrita ao prefixo midia/casas/*, nunca o bucket inteiro", () => {
     const template = Template.fromStack(backend);
     const policies = JSON.stringify(template.findResources("AWS::IAM::Policy"));

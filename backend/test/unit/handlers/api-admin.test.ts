@@ -17,6 +17,7 @@ const {
   listarCasas,
   excluirCasa,
   existeOcupacaoFutura,
+  criarPresignedPostFoto,
 } = vi.hoisted(() => ({
   exigirAdmin: vi.fn<(evento: APIGatewayProxyEventV2, verificador: unknown) => Promise<Identidade>>(),
   criarVerificadorAdmin: vi.fn(() => ({})),
@@ -29,6 +30,7 @@ const {
   listarCasas: vi.fn<() => Promise<Casa[]>>(),
   excluirCasa: vi.fn<(casa: Pick<Casa, "casaId" | "slug">) => Promise<void>>(),
   existeOcupacaoFutura: vi.fn<(casaId: string, deInclusive: string) => Promise<boolean>>(),
+  criarPresignedPostFoto: vi.fn<(chave: string, contentType: string, agora: Date) => Promise<unknown>>(),
 }));
 
 vi.mock("../../../src/lib/auth", () => ({ exigirAdmin, criarVerificadorAdmin }));
@@ -42,6 +44,7 @@ vi.mock("../../../src/lib/db", () => ({
   excluirCasa,
   existeOcupacaoFutura,
 }));
+vi.mock("../../../src/lib/s3", () => ({ criarPresignedPostFoto }));
 
 import { handler } from "../../../src/handlers/api-admin";
 
@@ -145,6 +148,22 @@ function eventoDelete(casaId: string): APIGatewayProxyEventV2 {
   });
 }
 
+function eventoUploadFoto(casaId: string, corpo: unknown): APIGatewayProxyEventV2 {
+  return criarEvento("POST", `/api/admin/casas/${casaId}/fotos/upload`, {
+    headers: { authorization: "Bearer token-de-teste" },
+    body: typeof corpo === "string" ? corpo : JSON.stringify(corpo),
+  });
+}
+
+const UPLOAD_VALIDO = { contentType: "image/webp", nomeOriginal: "fachada.jpg", bytes: 184_320 };
+
+const PRESIGNED_RESULTADO = {
+  chave: "midia/casas/01HQCASAEXISTENTE00000001/01HRFOTO-a3f9c1.webp",
+  url: "https://bucket-de-teste.s3.amazonaws.com/",
+  campos: { key: "midia/casas/.../x.webp", "Content-Type": "image/webp" },
+  expiraEm: "2026-10-11T18:09:00-03:00",
+};
+
 beforeEach(() => {
   exigirAdmin.mockReset();
   criarCasa.mockReset();
@@ -155,6 +174,7 @@ beforeEach(() => {
   listarCasas.mockReset();
   excluirCasa.mockReset();
   existeOcupacaoFutura.mockReset();
+  criarPresignedPostFoto.mockReset();
   exigirAdmin.mockResolvedValue(ADMIN);
   criarCasa.mockResolvedValue(undefined);
   obterCasa.mockResolvedValue(CASA_EXISTENTE);
@@ -164,6 +184,7 @@ beforeEach(() => {
   listarCasas.mockResolvedValue([]);
   excluirCasa.mockResolvedValue(undefined);
   existeOcupacaoFutura.mockResolvedValue(false);
+  criarPresignedPostFoto.mockResolvedValue(PRESIGNED_RESULTADO);
 });
 
 describe("autenticação (RN8)", () => {
@@ -554,5 +575,69 @@ describe("DELETE /api/admin/casas/{casaId} (UC-A02, RN14)", () => {
     expect(resposta.statusCode).toBe(404);
     expect(existeOcupacaoFutura).not.toHaveBeenCalled();
     expect(excluirCasa).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/admin/casas/{casaId}/fotos/upload (UC-A03)", () => {
+  it("responde 200 com o presigned POST", async () => {
+    const resposta = await handler(eventoUploadFoto(CASA_ID, UPLOAD_VALIDO));
+
+    expect(resposta.statusCode).toBe(200);
+    expect(obterCasa).toHaveBeenCalledWith(CASA_ID);
+    expect(JSON.parse(resposta.body as string)).toEqual(PRESIGNED_RESULTADO);
+  });
+
+  it("chama criarPresignedPostFoto com uma chave sob midia/casas/<casaId>/ e o Content-Type pedido", async () => {
+    await handler(eventoUploadFoto(CASA_ID, UPLOAD_VALIDO));
+
+    expect(criarPresignedPostFoto).toHaveBeenCalledOnce();
+    const [chave, contentType] = criarPresignedPostFoto.mock.calls[0] as [string, string, Date];
+    expect(chave).toMatch(new RegExp(`^midia/casas/${CASA_ID}/[0-9A-HJKMNP-TV-Z]{26}-[0-9a-f]{6}\\.webp$`));
+    expect(contentType).toBe("image/webp");
+  });
+
+  it("responde 404 quando a casa não existe", async () => {
+    obterCasa.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoUploadFoto(CASA_ID, UPLOAD_VALIDO));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(criarPresignedPostFoto).not.toHaveBeenCalled();
+  });
+
+  it("RN1: responde 422 LIMITE_FOTOS na 41ª foto", async () => {
+    const fotoBase = CASA_COMPLETA_PARA_ATIVAR.fotos[0] as (typeof CASA_COMPLETA_PARA_ATIVAR.fotos)[number];
+    const fotosNoLimite = Array.from({ length: 40 }, (_v, indice) => ({
+      ...fotoBase,
+      fotoId: `01HQ${String(indice).padStart(22, "0")}`,
+      ordem: indice,
+    }));
+    obterCasa.mockResolvedValue({ ...CASA_EXISTENTE, fotos: fotosNoLimite });
+
+    const resposta = await handler(eventoUploadFoto(CASA_ID, UPLOAD_VALIDO));
+
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "LIMITE_FOTOS" });
+    expect(criarPresignedPostFoto).not.toHaveBeenCalled();
+  });
+
+  it("RN2: responde 400 quando o contentType não está na allowlist (ex.: SVG)", async () => {
+    const resposta = await handler(
+      eventoUploadFoto(CASA_ID, { ...UPLOAD_VALIDO, contentType: "image/svg+xml" }),
+    );
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(obterCasa).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o corpo está ausente", async () => {
+    const resposta = await handler(
+      criarEvento("POST", `/api/admin/casas/${CASA_ID}/fotos/upload`, {
+        headers: { authorization: "Bearer token-de-teste" },
+      }),
+    );
+
+    expect(resposta.statusCode).toBe(400);
   });
 });
