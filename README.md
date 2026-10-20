@@ -63,7 +63,8 @@ A documentação completa está em [`docs/`](./docs/README.md). Comece por:
 | `infra` — stacks `dados` (DynamoDB), `auth` (Cognito, UC-A01), `frontend` (bucket S3) e `backend` (Lambdas `api-publica`/`api-admin`, UC-A03) | ✅ 48 testes · ⚠️ ainda sem `cdk deploy` |
 | `infra` — resto de `stack-frontend` (CloudFront), `stack-observabilidade` | ⬜ |
 | `backend` — `POST /api/admin/casas/{casaId}/fotos/upload` (UC-A03, presigned POST) | ✅ 6 testes unidade + 4 integração |
-| `backend` — demais rotas de UC-A03 (registro com magic number, ordem, edição, exclusão) | ⬜ |
+| `backend` — `POST /api/admin/casas/{casaId}/fotos` (UC-A03, registro: magic number RN13 + dimensões RN14) | ✅ 29 testes unidade (incl. `domain/fotos.ts`) + 7 integração |
+| `backend` — demais rotas de UC-A03 (ordem, edição, exclusão de foto) | ⬜ |
 | `site/` | ⬜ |
 
 O CDK ainda não foi iniciado porque depende das pendências

@@ -12,8 +12,9 @@
  * - `POST /api/admin/casas/{casaId}/status` — UC-A02
  * - `GET /api/admin/casas`, `GET /api/admin/casas/{casaId}` — UC-A02
  * - `DELETE /api/admin/casas/{casaId}` — UC-A02 (fecha o CRUD)
- * - `POST /api/admin/casas/{casaId}/fotos/upload` — UC-A03 (esta entrega, só
- *   o presigned POST; registro/ordem/edição/exclusão de foto ainda não têm rota)
+ * - `POST /api/admin/casas/{casaId}/fotos/upload` — UC-A03 (presigned POST)
+ * - `POST /api/admin/casas/{casaId}/fotos` — UC-A03 (esta entrega, registro
+ *   com verificação de magic number; ordem/edição/exclusão ainda não têm rota)
  * - (demais rotas de outros UCs de backoffice: a seguir)
  */
 
@@ -24,14 +25,20 @@ import { ulid } from "ulid";
 
 import {
   LIMITE_FOTOS_POR_CASA,
+  TAMANHO_MAX_FOTO_BYTES,
+  TIPOS_FOTO_ACEITOS,
   alterarStatusCasaSchema,
   casaEdicaoSchema,
   casaEntradaSchema,
   construirChaveFoto,
   fotoUploadSchema,
+  registrarFotoSchema,
   type Casa,
+  type Foto,
+  type TipoFotoAceito,
 } from "@recanto/shared";
 
+import { detectarTipoPorMagicNumber, extrairDimensoes } from "../domain/fotos";
 import { avaliarCompletudeParaAtivar, ehEdicaoDeSlugPermitida } from "../domain/casas";
 import { formatarInstanteIso, hojeEmSaoPaulo } from "../domain/datas";
 import { validarConfigPrecos } from "../domain/precos";
@@ -45,14 +52,16 @@ import {
   listarCasas,
   obterCasa,
   obterConfigPrecos,
+  registrarFoto,
 } from "../lib/db";
 import { ErroHttp } from "../lib/erros";
 import { decodificarCorpo, respostaErro, respostaJson } from "../lib/http";
-import { criarPresignedPostFoto } from "../lib/s3";
+import { apagarObjeto, criarPresignedPostFoto, lerInicioObjeto, obterMetadadosObjeto } from "../lib/s3";
 
 const ROTA_CASA_POR_ID = /^\/api\/admin\/casas\/([^/]+)$/;
 const ROTA_STATUS_CASA = /^\/api\/admin\/casas\/([^/]+)\/status$/;
 const ROTA_UPLOAD_FOTO = /^\/api\/admin\/casas\/([^/]+)\/fotos\/upload$/;
+const ROTA_FOTOS = /^\/api\/admin\/casas\/([^/]+)\/fotos$/;
 
 /** Mesma ordem de grandeza dos campos de texto de `casaEntradaSchema`
  * (`descricao`, `regras`, `comoChegar`, 10.000 chars cada) mais a margem dos
@@ -102,6 +111,12 @@ export async function handler(
     if (uploadMatch !== null) {
       const casaId = uploadMatch[1] as string;
       return await criarUploadFotoHandler(evento, casaId);
+    }
+
+    const fotosMatch = metodo === "POST" ? ROTA_FOTOS.exec(caminho) : null;
+    if (fotosMatch !== null) {
+      const casaId = fotosMatch[1] as string;
+      return await registrarFotoHandler(evento, casaId, identidade);
     }
 
     const casaMatch =
@@ -322,9 +337,16 @@ async function alterarStatusCasaHandler(
  * (`lib/s3.ts#criarPresignedPostFoto`), sem passar por esta Lambda.
  *
  * RN1: recusa a 41ª foto aqui, antes de gerar qualquer presigned — gerar uma
- * policy válida para um upload que o registro (`POST .../fotos`, ainda não
- * implementado) teria que recusar de qualquer forma seria dar ao navegador
- * uma falsa confirmação.
+ * policy válida para um upload que o registro (`registrarFotoHandler`, mais
+ * abaixo) teria que recusar de qualquer forma seria dar ao navegador uma
+ * falsa confirmação. Esta checagem é só UX (falha rápido); a autoritativa é
+ * a condição `size(fotos) < :limite` em `lib/db.ts#registrarFoto`, no
+ * momento em que a foto de fato entra no array.
+ *
+ * RN2: `contentType` fora da allowlist (ex.: SVG) é `422 TIPO_NAO_SUPORTADO`,
+ * não `400 ENTRADA_INVALIDA` — é regra de negócio, não forma, por isso não
+ * está em `fotoUploadSchema` (`z.enum()` misturaria as duas camadas; ver o
+ * comentário do próprio schema).
  */
 async function criarUploadFotoHandler(
   evento: APIGatewayProxyEventV2,
@@ -336,6 +358,83 @@ async function criarUploadFotoHandler(
   const entrada = fotoUploadSchema.safeParse(corpo.dados);
   if (!entrada.success) {
     return respostaErro(400, "ENTRADA_INVALIDA", "Dados do upload inválidos.", {
+      campos: entrada.error.issues.map((problema) => problema.path.join(".")),
+    });
+  }
+
+  if (!TIPOS_FOTO_ACEITOS.includes(entrada.data.contentType as TipoFotoAceito)) {
+    return respostaErro(
+      422,
+      "TIPO_NAO_SUPORTADO",
+      "Este tipo de arquivo não é aceito. Envie WebP, JPEG ou PNG.",
+    );
+  }
+  const contentType = entrada.data.contentType as TipoFotoAceito;
+
+  const casa = await obterCasa(casaId);
+  if (casa === undefined) {
+    return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
+  }
+
+  if (casa.fotos.length >= LIMITE_FOTOS_POR_CASA) {
+    return respostaErro(
+      422,
+      "LIMITE_FOTOS",
+      `Limite de ${LIMITE_FOTOS_POR_CASA} fotos por casa atingido.`,
+    );
+  }
+
+  const fotoId = ulid();
+  const sufixoAleatorio = randomBytes(3).toString("hex");
+  const chave = construirChaveFoto(casaId, fotoId, contentType, sufixoAleatorio);
+
+  const presigned = await criarPresignedPostFoto(chave, contentType, new Date());
+
+  return respostaJson(200, presigned);
+}
+
+/**
+ * `POST /api/admin/casas/{casaId}/fotos` (UC-A03): registra uma foto já
+ * enviada ao S3 pelo presigned POST, após verificar de verdade o que está
+ * lá — nunca confiando no que o navegador declarou no upload.
+ * docs/03-tecnico/07-armazenamento-de-imagens.md descreve os quatro passos:
+ *
+ * 1. `HeadObject` (`lib/s3.ts#obterMetadadosObjeto`): o objeto existe? o
+ *    tamanho está dentro do teto de RN3? o `Content-Type` armazenado está
+ *    na allowlist de RN2?
+ * 2. Lê os bytes iniciais (`lerInicioObjeto`) e confere o magic number
+ *    (RN13, `domain/fotos.ts#detectarTipoPorMagicNumber`) contra o
+ *    `Content-Type` do passo 1 — se não casar, apaga o objeto e `400
+ *    ARQUIVO_INVALIDO` (E5): alguém subiu algo que não é a imagem que diz ser.
+ * 3. Extrai largura/altura do próprio arquivo (RN14, `extrairDimensoes`) —
+ *    se falhar, mesmo tratamento do passo 2 (arquivo structuralmente inválido).
+ * 4. Grava a foto no item da casa (`lib/db.ts#registrarFoto`).
+ *
+ * RN1 é verificada **duas vezes**: aqui, como UX (falha antes de gastar os
+ * `HeadObject`/`GetObject` dos passos 1-2), e de novo, autoritativamente, na
+ * condição da escrita de `registrarFoto` — a mesma razão de
+ * `criarUploadFotoHandler` acima ter a sua própria checagem de UX.
+ *
+ * A chave no corpo é verificada contra o prefixo `midia/casas/<casaId>/`
+ * (RN11) antes de qualquer chamada ao S3: sem isso, o admin de uma casa
+ * poderia registrar a foto já enviada de **outra** casa, já que `chave` é
+ * só forma no schema (depende do `casaId` da URL para validar o prefixo).
+ *
+ * RN7 (exclusividade de `principal`): se a nova foto é `principal`, as
+ * demais são desmarcadas na mesma escrita — nunca em duas chamadas, que
+ * deixariam uma janela com zero ou duas principais.
+ */
+async function registrarFotoHandler(
+  evento: APIGatewayProxyEventV2,
+  casaId: string,
+  identidade: Identidade,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const corpo = lerCorpoJson(evento);
+  if ("resposta" in corpo) return corpo.resposta;
+
+  const entrada = registrarFotoSchema.safeParse(corpo.dados);
+  if (!entrada.success) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Dados da foto inválidos.", {
       campos: entrada.error.issues.map((problema) => problema.path.join(".")),
     });
   }
@@ -353,13 +452,96 @@ async function criarUploadFotoHandler(
     );
   }
 
-  const fotoId = ulid();
-  const sufixoAleatorio = randomBytes(3).toString("hex");
-  const chave = construirChaveFoto(casaId, fotoId, entrada.data.contentType, sufixoAleatorio);
+  if (!entrada.data.chave.startsWith(`midia/casas/${casaId}/`)) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Esta chave não pertence a esta casa.", {
+      campos: ["chave"],
+    });
+  }
 
-  const presigned = await criarPresignedPostFoto(chave, entrada.data.contentType, new Date());
+  const metadados = await obterMetadadosObjeto(entrada.data.chave);
+  if (metadados === undefined) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Nenhum arquivo foi enviado para esta chave.", {
+      campos: ["chave"],
+    });
+  }
+  if (metadados.bytes > TAMANHO_MAX_FOTO_BYTES) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "O arquivo enviado excede o limite de tamanho.");
+  }
+  if (
+    metadados.contentType === undefined ||
+    !TIPOS_FOTO_ACEITOS.includes(metadados.contentType as TipoFotoAceito)
+  ) {
+    return respostaErro(
+      422,
+      "TIPO_NAO_SUPORTADO",
+      "Este tipo de arquivo não é aceito. Envie WebP, JPEG ou PNG.",
+    );
+  }
+  const contentType = metadados.contentType as TipoFotoAceito;
 
-  return respostaJson(200, presigned);
+  const inicioDoArquivo = await lerInicioObjeto(entrada.data.chave);
+
+  if (detectarTipoPorMagicNumber(inicioDoArquivo) !== contentType) {
+    await apagarObjetoBestEffort(entrada.data.chave);
+    return respostaErro(
+      400,
+      "ARQUIVO_INVALIDO",
+      "Este arquivo não é uma imagem válida.",
+    );
+  }
+
+  const dimensoes = extrairDimensoes(inicioDoArquivo);
+  if (dimensoes === undefined) {
+    await apagarObjetoBestEffort(entrada.data.chave);
+    return respostaErro(
+      400,
+      "ARQUIVO_INVALIDO",
+      "Não foi possível processar esta imagem.",
+    );
+  }
+
+  const principal = entrada.data.principal ?? false;
+  const fotosExistentes = principal
+    ? casa.fotos.map((foto) => ({ ...foto, principal: false }))
+    : casa.fotos;
+  const proximaOrdem =
+    casa.fotos.length === 0 ? 10 : Math.max(...casa.fotos.map((foto) => foto.ordem)) + 10;
+
+  const novaFoto: Foto = {
+    fotoId: ulid(),
+    chave: entrada.data.chave,
+    largura: dimensoes.largura,
+    altura: dimensoes.altura,
+    bytes: metadados.bytes,
+    legenda: entrada.data.legenda ?? "",
+    textoAlternativo: entrada.data.textoAlternativo,
+    ordem: proximaOrdem,
+    principal,
+    enviadaEm: formatarInstanteIso(new Date()),
+  };
+
+  await registrarFoto(
+    casaId,
+    [...fotosExistentes, novaFoto],
+    casa.versao,
+    formatarInstanteIso(new Date()),
+    identidade.sub,
+  );
+
+  return respostaJson(201, novaFoto);
+}
+
+/** `apagarObjeto` é best-effort nesta rota (E5): a resposta `400
+ * ARQUIVO_INVALIDO` não pode depender de o S3 confirmar a exclusão — ver o
+ * comentário de `lib/s3.ts#apagarObjeto`. */
+async function apagarObjetoBestEffort(chave: string): Promise<void> {
+  try {
+    await apagarObjeto(chave);
+  } catch {
+    // Objeto órfão: custa frações de centavo, não é referenciado por nada
+    // (a foto nunca chegou a ser registrada). Sem logger neste projeto
+    // ainda (lib/log.ts não existe) — nada a fazer além de seguir.
+  }
 }
 
 /**

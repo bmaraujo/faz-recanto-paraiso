@@ -23,13 +23,7 @@
 import { z } from "zod";
 
 import { comodidadeSchema } from "../comodidades";
-import {
-  ESTADOS_CASA,
-  SLUG_REGEX,
-  TIPOS_FOTO_ACEITOS,
-  ehUrlDeMapaPermitida,
-  tipoCamaSchema,
-} from "../dominio/casas";
+import { ESTADOS_CASA, SLUG_REGEX, ehUrlDeMapaPermitida, tipoCamaSchema } from "../dominio/casas";
 import { ulidSchema } from "./comum";
 
 export const statusCasaSchema = z.enum(ESTADOS_CASA);
@@ -122,17 +116,43 @@ export const alterarStatusCasaSchema = z.object({ status: statusCasaSchema });
  * presigned POST. `bytes` é só informativo — o tamanho real após o
  * redimensionamento no navegador; o teto de 3 MB (RN3) é imposto pela
  * condição `content-length-range` da policy do S3, não validado aqui.
+ *
+ * `contentType` é só forma aqui (uma string não vazia) — RN2 ("só
+ * WebP/JPEG/PNG, nunca SVG") é regra de negócio, não forma, e por isso vira
+ * `422 TIPO_NAO_SUPORTADO` no handler (contra `TIPOS_FOTO_ACEITOS`), não
+ * `400 ENTRADA_INVALIDA` de um `z.enum()` aqui. Mesma separação de
+ * responsabilidade do cabeçalho deste pacote (zod valida forma; regra de
+ * negócio é de quem chama).
  */
 export const fotoUploadSchema = z.object({
-  contentType: z.enum(TIPOS_FOTO_ACEITOS),
+  contentType: z.string().min(1).max(100),
   nomeOriginal: z.string().min(1).max(255),
   bytes: z.number().int().positive(),
 });
 
 export type FotoUpload = z.infer<typeof fotoUploadSchema>;
 
-/** Uma foto embutida no item da casa (UC-A03, ainda não implementado — este
- * schema existe só para `casaArmazenadaSchema` validar o que já estiver lá). */
+/**
+ * `POST /api/admin/casas/{casaId}/fotos` (UC-A03): registra uma foto já
+ * enviada ao S3 pelo presigned POST do upload.
+ *
+ * `chave` é só forma aqui — o prefixo `midia/casas/<casaId>/` (RN11) depende
+ * do `casaId` da URL, então o handler verifica, não este schema. RN5:
+ * `textoAlternativo` é obrigatório (acessibilidade e SEO); RN6: `legenda` é
+ * opcional; `principal` default `false` quando ausente.
+ */
+export const registrarFotoSchema = z.object({
+  chave: z.string().min(1).max(500),
+  textoAlternativo: z.string().min(1).max(300),
+  legenda: z.string().max(300).optional(),
+  principal: z.boolean().optional(),
+});
+
+export type RegistrarFoto = z.infer<typeof registrarFotoSchema>;
+
+/** Uma foto embutida no item da casa — este schema existe para
+ * `casaArmazenadaSchema` validar o que já estiver persistido e para o
+ * handler de registro validar a foto que ele mesmo acabou de montar. */
 export const fotoSchema = z.object({
   fotoId: ulidSchema,
   chave: z.string().min(1),

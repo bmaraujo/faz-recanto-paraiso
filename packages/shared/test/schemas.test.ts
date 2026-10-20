@@ -11,6 +11,7 @@ import {
   entradaCotacaoPublicaSchema,
   fotoUploadSchema,
   periodoPrecoSchema,
+  registrarFotoSchema,
   ulidSchema,
 } from "../src/index";
 
@@ -543,10 +544,16 @@ describe("fotoUploadSchema (UC-A03)", () => {
     }
   });
 
-  it("RN2: rejeita SVG — não está no enum de formatos aceitos", () => {
+  it("RN2 (allowlist de formato) não é responsabilidade deste schema — aceita SVG como forma válida", () => {
+    // A rejeição de verdade (422 TIPO_NAO_SUPORTADO) é regra de negócio do
+    // handler, contra TIPOS_FOTO_ACEITOS — ver o comentário do próprio schema.
     expect(
       fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, contentType: "image/svg+xml" }).success,
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("rejeita contentType vazio — isso sim é forma", () => {
+    expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, contentType: "" }).success).toBe(false);
   });
 
   it("rejeita bytes zero ou negativo", () => {
@@ -561,5 +568,37 @@ describe("fotoUploadSchema (UC-A03)", () => {
 
   it("rejeita nomeOriginal vazio", () => {
     expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, nomeOriginal: "" }).success).toBe(false);
+  });
+});
+
+describe("registrarFotoSchema (UC-A03)", () => {
+  const REGISTRO_VALIDO = {
+    chave: "midia/casas/01HQ.../01HR9A-a3f9c1.webp",
+    textoAlternativo: "Casa de madeira com varanda, vista do lago ao fundo",
+    legenda: "Fachada vista do lago",
+    principal: false,
+  };
+
+  it("aceita o corpo do contrato técnico", () => {
+    expect(registrarFotoSchema.safeParse(REGISTRO_VALIDO).success).toBe(true);
+  });
+
+  it("aceita sem legenda nem principal — RN6, os dois são opcionais", () => {
+    const { legenda: _l, principal: _p, ...semOpcionais } = REGISTRO_VALIDO;
+    expect(registrarFotoSchema.safeParse(semOpcionais).success).toBe(true);
+  });
+
+  it("RN5: rejeita sem textoAlternativo ou com ele vazio", () => {
+    const { textoAlternativo: _t, ...semTexto } = REGISTRO_VALIDO;
+    expect(registrarFotoSchema.safeParse(semTexto).success).toBe(false);
+    expect(
+      registrarFotoSchema.safeParse({ ...REGISTRO_VALIDO, textoAlternativo: "" }).success,
+    ).toBe(false);
+  });
+
+  it("rejeita sem chave ou com ela vazia", () => {
+    const { chave: _c, ...semChave } = REGISTRO_VALIDO;
+    expect(registrarFotoSchema.safeParse(semChave).success).toBe(false);
+    expect(registrarFotoSchema.safeParse({ ...REGISTRO_VALIDO, chave: "" }).success).toBe(false);
   });
 });

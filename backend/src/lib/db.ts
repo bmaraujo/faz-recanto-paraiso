@@ -25,11 +25,13 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 import {
+  LIMITE_FOTOS_POR_CASA,
   casaArmazenadaSchema,
   configPrecosSchema,
   type Casa,
   type ConfigGeral,
   type ConfigPrecos,
+  type Foto,
   type StatusCasa,
 } from "@recanto/shared";
 
@@ -492,11 +494,12 @@ export async function existeOcupacaoFutura(casaId: string, deInclusive: string):
  * de `attribute_exists(PK)` no item principal, defesa contra uma exclusão
  * concorrente que já tenha apagado a mesma casa.
  *
- * O que o UC pede e ainda não é feito aqui: apagar as fotos do S3
- * (`lib/s3.ts` não existe — UC-A03) e as ocupações passadas em lote
- * (sempre vazio hoje, pelo mesmo motivo de `existeOcupacaoFutura`). Os dois
- * são "best-effort" no próprio texto do UC — não bloqueiam a exclusão do
- * item principal, por isso ficam para quando houver o que de fato limpar.
+ * O que o UC pede e ainda não é feito aqui: apagar as fotos do S3 (`lib/s3.ts`
+ * já existe, UC-A03, mas esta função ainda não chama `apagarObjeto` para cada
+ * uma) e as ocupações passadas em lote (sempre vazio hoje, pelo mesmo motivo
+ * de `existeOcupacaoFutura`). Os dois são "best-effort" no próprio texto do
+ * UC — não bloqueiam a exclusão do item principal, por isso ficam para
+ * quando houver o que de fato limpar.
  */
 export async function excluirCasa(casa: Pick<Casa, "casaId" | "slug">): Promise<void> {
   await documentoDb.send(
@@ -514,4 +517,63 @@ export async function excluirCasa(casa: Pick<Casa, "casaId" | "slug">): Promise<
       ],
     }),
   );
+}
+
+/**
+ * `POST /api/admin/casas/{casaId}/fotos` (UC-A03): grava `novasFotos` (o
+ * array inteiro, já com a nova foto incluída e a exclusividade de
+ * `principal` resolvida pelo handler — RN7) e incrementa `versao`
+ * atomicamente, mesmo padrão de `alterarStatusCasa`.
+ *
+ * `size(fotos) < :limite` na própria condição da escrita é o que fecha a
+ * mesma brecha de corrida que a unicidade de slug em `criarCasa` já evita
+ * (armadilha nº 1 do UC-A02): sem isso, duas chamadas concorrentes que leem
+ * 39 fotos cada uma passariam pela checagem de RN1 do handler e as duas
+ * escreveriam, chegando a 41. Em caso de falha, um `GetItem` extra (só no
+ * caminho de erro, raro) decide se o motivo foi RN1 (`422 LIMITE_FOTOS`) ou
+ * concorrência de versão (`409 CONFLITO_VERSAO`) — a condição composta não
+ * diz qual das duas falhou.
+ */
+export async function registrarFoto(
+  casaId: string,
+  novasFotos: Foto[],
+  versaoAnterior: number,
+  agora: string,
+  atualizadoPor: string,
+): Promise<void> {
+  try {
+    await documentoDb.send(
+      new UpdateCommand({
+        TableName: nomeTabela(),
+        Key: chaveCasa(casaId),
+        ConditionExpression:
+          "attribute_exists(PK) AND versao = :versaoAnterior AND size(fotos) < :limite",
+        UpdateExpression:
+          "SET fotos = :fotos, versao = versao + :um, publicacaoPendente = :pendente, " +
+          "atualizadoEm = :agora, atualizadoPor = :por",
+        ExpressionAttributeValues: {
+          ":versaoAnterior": versaoAnterior,
+          ":limite": LIMITE_FOTOS_POR_CASA,
+          ":fotos": novasFotos,
+          ":um": 1,
+          ":pendente": true,
+          ":agora": agora,
+          ":por": atualizadoPor,
+        },
+      }),
+    );
+  } catch (erro) {
+    if (erro instanceof ConditionalCheckFailedException) {
+      const casaAtual = await obterCasa(casaId);
+      if (casaAtual !== undefined && casaAtual.fotos.length >= LIMITE_FOTOS_POR_CASA) {
+        throw new ErroHttp(
+          422,
+          "LIMITE_FOTOS",
+          `Limite de ${LIMITE_FOTOS_POR_CASA} fotos por casa atingido.`,
+        );
+      }
+      throw erroConflitoVersao();
+    }
+    throw erro;
+  }
 }

@@ -78,9 +78,11 @@ não construída (só precisa de `Query` na tabela, sem preço nem admin):
 | `test/integracao/` (DynamoDB Local via Docker Compose, `npm run test:integracao`) | ✅ — cobre disponibilidade, cotação, config pública e todo o CRUD de casas (concorrência real na unicidade de slug, no controle de versão — inclusive entre `PUT` e troca de status — e na ocupação futura que bloqueia exclusão) |
 | `lib/auth.ts` (`exigirAdmin`, UC-A01) + `lib/erros.ts` (`ErroHttp`) | ✅ |
 | `handlers/api-admin.ts` — CRUD completo de casas: `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}` + `POST .../status` (UC-A02) | ✅ — `lib/db.ts#criarCasa`/`atualizarCasa`/`alterarStatusCasa`/`listarCasas`/`excluirCasa`/`existeOcupacaoFutura` fazem as escritas e leituras (slug + casa + preços padrão na criação; versão otimista e troca de slug na edição, RN4/E9; incremento atômico de versão na troca de status, RN7; listagem via `GSI1`; RN14 real antes de excluir) |
-| `lib/s3.ts` (`criarPresignedPostFoto`, UC-A03) | ✅ |
+| `lib/s3.ts` (`criarPresignedPostFoto`/`obterMetadadosObjeto`/`lerInicioObjeto`/`apagarObjeto`, UC-A03) | ✅ |
+| `domain/fotos.ts` (`detectarTipoPorMagicNumber` RN13, `extrairDimensoes` RN14 via `image-size`) | ✅ — pura, zero mock, não é reexport de `@recanto/shared` (UC-A03 é só do backend) |
 | `handlers/api-admin.ts` — `POST .../casas/{casaId}/fotos/upload` (UC-A03, presigned POST) | ✅ — recusa a 41ª foto (RN1) antes de gerar a policy; chave via `construirChaveFoto` (RN10/RN11) |
-| `handlers/api-admin.ts` — demais rotas de UC-A03 (registro com magic number, ordem, edição, exclusão de foto) | ⬜ — próxima entrega |
+| `handlers/api-admin.ts` — `POST .../casas/{casaId}/fotos` (UC-A03, registro) | ✅ — `HeadObject` + magic number + dimensões reais; `lib/db.ts#registrarFoto` fecha a corrida do limite de 40 com `size(fotos) < :limite` na condição da escrita |
+| `handlers/api-admin.ts` — demais rotas de UC-A03 (ordem, edição, exclusão de foto) | ⬜ — próxima entrega |
 | `lib/ses.ts`, `lib/ssm.ts`, `lib/ical.ts`, `lib/log.ts` | ⬜ |
 | `handlers/api-publica.ts` — `GET /api/casas`, `GET /api/casas/{slug}` | ⬜ — próximas entregas da Fase 1 |
 | `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts` | ⬜ |
