@@ -543,10 +543,16 @@ describe("fotoUploadSchema (UC-A03)", () => {
     }
   });
 
-  it("RN2: rejeita SVG — não está no enum de formatos aceitos", () => {
+  it("RN2 (allowlist de formato) não é responsabilidade deste schema — aceita SVG como forma válida", () => {
+    // A rejeição de verdade (422 TIPO_NAO_SUPORTADO) é regra de negócio do
+    // handler, contra TIPOS_FOTO_ACEITOS — ver o comentário do próprio schema.
     expect(
       fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, contentType: "image/svg+xml" }).success,
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("rejeita contentType vazio — isso sim é forma", () => {
+    expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, contentType: "" }).success).toBe(false);
   });
 
   it("rejeita bytes zero ou negativo", () => {

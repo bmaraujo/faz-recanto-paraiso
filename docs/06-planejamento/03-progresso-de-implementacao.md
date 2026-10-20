@@ -43,16 +43,13 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 21 | 2026-10-17 | 1 | UC-A02 | `DELETE /api/admin/casas/{casaId}` (RN14) — fecha o CRUD; `lib/db.ts#excluirCasa`/`existeOcupacaoFutura` (verificação real sobre `OCUPACAO#`, não um placeholder, mesmo sem reserva/bloqueio ainda escrevendo lá) | `576902f` |
 | 22 | 2026-10-17 | 1 | UC-A03 | `infra/` ganha `stack-frontend` — só o bucket S3 (RN10/RN11 de UC-A03), sem CloudFront/ACM/domínio ainda; nome do bucket não fixado (unicidade global, diferente da tabela) | `efbe4f0` |
 | 23 | 2026-10-19 | 1 | UC-A03 | `infra/` ganha `stack-backend` — Lambdas `api-publica`/`api-admin` (`lib/constructs/lambda-node.ts`, `lambda.Function` + asset do `esbuild` já existente, não `NodejsFunction`), Function URLs `NONE`, IAM de menor privilégio real (sem `dynamodb:Scan`; S3 restrito a `midia/casas/*`) | `bd483cf` |
-| 24 | 2026-10-20 | 1 | UC-A03 | `POST /api/admin/casas/{casaId}/fotos/upload` — primeira rota de UC-A03; `lib/s3.ts` nasce (`criarPresignedPostFoto`); `construirChaveFoto`/`TIPOS_FOTO_ACEITOS`/`LIMITE_FOTOS_POR_CASA` em `dominio/casas.ts`; `fotoUploadSchema` em `schemas/casa.ts`; `stack-backend` ganha o env `BUCKET` na `api-admin` | _pendente_ |
+| 24 | 2026-10-20 | 1 | UC-A03 | `POST /api/admin/casas/{casaId}/fotos/upload` — primeira rota de UC-A03; `lib/s3.ts` nasce (`criarPresignedPostFoto`); `construirChaveFoto`/`TIPOS_FOTO_ACEITOS`/`LIMITE_FOTOS_POR_CASA` em `dominio/casas.ts`; `fotoUploadSchema` em `schemas/casa.ts`; `stack-backend` ganha o env `BUCKET` na `api-admin` | `44bc66d` |
+| 25 | 2026-10-20 | 1 | UC-A03 | Correção: `contentType` fora da allowlist (RN2, ex. SVG) agora responde `422 TIPO_NAO_SUPORTADO`, como o contrato técnico pede — a entrega 24 respondia `400 ENTRADA_INVALIDA`, porque a checagem estava dentro do `z.enum()` do zod em vez de ser regra de negócio no handler | _pendente_ |
 
-**Estado em `main` agora:** `e37a977` (merge do PR #16, bucket de `stack-frontend`).
-As entregas 23 e 24 estão em branches próprias, ainda não mergeadas — e
-**empilhadas**: a branch da entrega 24 nasce de cima da branch da entrega 23
-(`feat/infra-backend-lambdas`), porque esta rota só existe com `BUCKET` no
-ambiente da `api-admin`, que a entrega 23 introduziu. A entrega 23 precisa ser
-mergeada primeiro (ou a 24 mergeada nela antes). **Nenhum `cdk deploy` foi
-executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a conta
-real `627010764306`.
+**Estado em `main` agora:** `b6177b0` (merge do PR #17, `POST .../fotos/upload`).
+A entrega 25 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy`
+foi executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a
+conta real `627010764306`.
 
 ---
 
@@ -434,6 +431,13 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     Não há como configurar essa grafia — é fixa no SDK. Funcionalmente
     equivalente: é exatamente o que o navegador precisa reenviar ao S3, tal
     como veio.
+44. **`fotoUploadSchema.contentType` não é mais um `z.enum(TIPOS_FOTO_ACEITOS)`
+    — virou `z.string()`.** A entrega 24 colocou a allowlist de RN2 dentro do
+    zod, o que fazia SVG falhar como `400 ENTRADA_INVALIDA` (erro de forma)
+    quando o contrato técnico pede `422 TIPO_NAO_SUPORTADO` (erro de regra de
+    negócio) — exatamente a mistura de camada que o cabeçalho de
+    `schemas/comum.ts` já avisa para não fazer. A checagem contra
+    `TIPOS_FOTO_ACEITOS` move para o handler, depois da validação de forma.
 
 ---
 
@@ -527,6 +531,10 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   em integração sem LocalStack (decisão 42); a chave vem de
   `construirChaveFoto` (RN10/RN11), que recusa a 41ª foto (RN1) antes de
   gerar qualquer presigned.
+- ~~A entrega 24 respondia `400 ENTRADA_INVALIDA` para `contentType` fora da
+  allowlist, quando o contrato pede `422 TIPO_NAO_SUPORTADO`~~ — corrigido
+  (entrega 25, decisão 44): a checagem de RN2 saiu do `z.enum()` do zod e
+  virou regra de negócio no handler, contra `TIPOS_FOTO_ACEITOS`.
 
 ## Comandos de referência
 

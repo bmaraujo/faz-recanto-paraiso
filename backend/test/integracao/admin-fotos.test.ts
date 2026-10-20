@@ -157,7 +157,7 @@ describe("POST /api/admin/casas/{casaId}/fotos/upload (integração)", () => {
     expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "LIMITE_FOTOS" });
   });
 
-  it("RN2: responde 400 para um Content-Type fora da allowlist (SVG)", async () => {
+  it("RN2: responde 422 TIPO_NAO_SUPORTADO para um Content-Type fora da allowlist (SVG)", async () => {
     const casaId = await criarCasaDeTeste("casa-fotos-svg");
 
     const resposta = await uploadFotoViaHandler(casaId, {
@@ -165,7 +165,7 @@ describe("POST /api/admin/casas/{casaId}/fotos/upload (integração)", () => {
       contentType: "image/svg+xml",
     });
 
-    expect(resposta.statusCode).toBe(400);
-    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "TIPO_NAO_SUPORTADO" });
   });
 });

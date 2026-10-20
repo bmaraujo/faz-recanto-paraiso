@@ -621,13 +621,13 @@ describe("POST /api/admin/casas/{casaId}/fotos/upload (UC-A03)", () => {
     expect(criarPresignedPostFoto).not.toHaveBeenCalled();
   });
 
-  it("RN2: responde 400 quando o contentType não está na allowlist (ex.: SVG)", async () => {
+  it("RN2: responde 422 TIPO_NAO_SUPORTADO quando o contentType não está na allowlist (ex.: SVG)", async () => {
     const resposta = await handler(
       eventoUploadFoto(CASA_ID, { ...UPLOAD_VALIDO, contentType: "image/svg+xml" }),
     );
 
-    expect(resposta.statusCode).toBe(400);
-    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "TIPO_NAO_SUPORTADO" });
     expect(obterCasa).not.toHaveBeenCalled();
   });
 

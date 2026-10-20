@@ -24,12 +24,14 @@ import { ulid } from "ulid";
 
 import {
   LIMITE_FOTOS_POR_CASA,
+  TIPOS_FOTO_ACEITOS,
   alterarStatusCasaSchema,
   casaEdicaoSchema,
   casaEntradaSchema,
   construirChaveFoto,
   fotoUploadSchema,
   type Casa,
+  type TipoFotoAceito,
 } from "@recanto/shared";
 
 import { avaliarCompletudeParaAtivar, ehEdicaoDeSlugPermitida } from "../domain/casas";
@@ -325,6 +327,11 @@ async function alterarStatusCasaHandler(
  * policy válida para um upload que o registro (`POST .../fotos`, ainda não
  * implementado) teria que recusar de qualquer forma seria dar ao navegador
  * uma falsa confirmação.
+ *
+ * RN2: `contentType` fora da allowlist (ex.: SVG) é `422 TIPO_NAO_SUPORTADO`,
+ * não `400 ENTRADA_INVALIDA` — é regra de negócio, não forma, por isso não
+ * está em `fotoUploadSchema` (`z.enum()` misturaria as duas camadas; ver o
+ * comentário do próprio schema).
  */
 async function criarUploadFotoHandler(
   evento: APIGatewayProxyEventV2,
@@ -339,6 +346,15 @@ async function criarUploadFotoHandler(
       campos: entrada.error.issues.map((problema) => problema.path.join(".")),
     });
   }
+
+  if (!TIPOS_FOTO_ACEITOS.includes(entrada.data.contentType as TipoFotoAceito)) {
+    return respostaErro(
+      422,
+      "TIPO_NAO_SUPORTADO",
+      "Este tipo de arquivo não é aceito. Envie WebP, JPEG ou PNG.",
+    );
+  }
+  const contentType = entrada.data.contentType as TipoFotoAceito;
 
   const casa = await obterCasa(casaId);
   if (casa === undefined) {
@@ -355,9 +371,9 @@ async function criarUploadFotoHandler(
 
   const fotoId = ulid();
   const sufixoAleatorio = randomBytes(3).toString("hex");
-  const chave = construirChaveFoto(casaId, fotoId, entrada.data.contentType, sufixoAleatorio);
+  const chave = construirChaveFoto(casaId, fotoId, contentType, sufixoAleatorio);
 
-  const presigned = await criarPresignedPostFoto(chave, entrada.data.contentType, new Date());
+  const presigned = await criarPresignedPostFoto(chave, contentType, new Date());
 
   return respostaJson(200, presigned);
 }
