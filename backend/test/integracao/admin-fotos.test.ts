@@ -15,6 +15,7 @@
  * razão: a verificação do JWT já tem cobertura própria em `test/unit/lib/auth.test.ts`.
  */
 import type { Identidade } from "../../src/lib/auth";
+import type { MetadadosObjeto } from "../../src/lib/s3";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Nome próprio: ver o mesmo comentário em test/integracao/disponibilidade.test.ts.
@@ -27,10 +28,29 @@ const { exigirAdmin, criarVerificadorAdmin } = vi.hoisted(() => ({
 }));
 vi.mock("../../src/lib/auth", () => ({ exigirAdmin, criarVerificadorAdmin }));
 
+// `criarPresignedPostFoto` continua real (só assina localmente, sem rede —
+// ver o cabeçalho deste arquivo). `obterMetadadosObjeto`/`lerInicioObjeto`/
+// `apagarObjeto` fazem chamadas reais de HeadObject/GetObject/DeleteObject,
+// e não há LocalStack neste projeto — mockados aqui pela mesma razão que
+// `exigirAdmin` é mockado (a dependência real não está disponível
+// localmente); a parte que não depende de S3 de verdade — a escrita real no
+// item da casa via `lib/db.ts#registrarFoto` — continua 100% real contra o
+// DynamoDB Local.
+const { obterMetadadosObjeto, lerInicioObjeto, apagarObjeto } = vi.hoisted(() => ({
+  obterMetadadosObjeto: vi.fn<(chave: string) => Promise<MetadadosObjeto | undefined>>(),
+  lerInicioObjeto: vi.fn<(chave: string) => Promise<Buffer>>(),
+  apagarObjeto: vi.fn<(chave: string) => Promise<void>>(),
+}));
+vi.mock("../../src/lib/s3", async (importarOriginal) => {
+  const original = await importarOriginal<typeof import("../../src/lib/s3")>();
+  return { ...original, obterMetadadosObjeto, lerInicioObjeto, apagarObjeto };
+});
+
 import { handler } from "../../src/handlers/api-admin";
 import { clienteDynamoDB, nomeTabela } from "../../src/lib/db";
 import { apagarTabela, criarTabela } from "../esquema";
 import { criarEvento } from "../evento-teste";
+import { construirWebp } from "../fixtures-imagem";
 
 const TABELA = nomeTabela();
 const ADMIN: Identidade = { sub: "01HQADMINTESTE" };
@@ -73,9 +93,33 @@ function uploadFotoViaHandler(casaId: string, corpo: unknown) {
   );
 }
 
+function registrarFotoViaHandler(casaId: string, corpo: unknown) {
+  return handler(
+    criarEvento("POST", `/api/admin/casas/${casaId}/fotos`, {
+      headers: { authorization: "Bearer token-de-teste" },
+      body: JSON.stringify(corpo),
+    }),
+  );
+}
+
 async function criarCasaDeTeste(slug: string): Promise<string> {
   const resposta = await criarCasaViaHandler({ ...CASA_VALIDA, slug });
   return (JSON.parse(resposta.body as string) as { casaId: string }).casaId;
+}
+
+async function obterItemCasa(casaId: string) {
+  const { documentoDb } = await import("../../src/lib/db");
+  const { GetCommand } = await import("@aws-sdk/lib-dynamodb");
+  const resultado = await documentoDb.send(
+    new GetCommand({ TableName: TABELA, Key: { PK: `CASA#${casaId}`, SK: "META" } }),
+  );
+  return resultado.Item as
+    | {
+        fotos: { fotoId: string; principal: boolean; ordem: number }[];
+        versao: number;
+        publicacaoPendente: boolean;
+      }
+    | undefined;
 }
 
 describe("POST /api/admin/casas/{casaId}/fotos/upload (integração)", () => {
@@ -167,5 +211,162 @@ describe("POST /api/admin/casas/{casaId}/fotos/upload (integração)", () => {
 
     expect(resposta.statusCode).toBe(422);
     expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "TIPO_NAO_SUPORTADO" });
+  });
+});
+
+const REGISTRO_VALIDO = {
+  textoAlternativo: "Casa de madeira com varanda, vista do lago ao fundo",
+  legenda: "Fachada vista do lago",
+};
+
+describe("POST /api/admin/casas/{casaId}/fotos (integração, registro)", () => {
+  beforeAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+    await criarTabela(clienteDynamoDB, TABELA);
+  });
+
+  afterAll(async () => {
+    await apagarTabela(clienteDynamoDB, TABELA);
+  });
+
+  beforeEach(() => {
+    exigirAdmin.mockReset();
+    exigirAdmin.mockResolvedValue(ADMIN);
+    obterMetadadosObjeto.mockReset();
+    lerInicioObjeto.mockReset();
+    apagarObjeto.mockReset();
+    obterMetadadosObjeto.mockResolvedValue({ bytes: 200_000, contentType: "image/webp" });
+    lerInicioObjeto.mockResolvedValue(construirWebp(800, 600));
+    apagarObjeto.mockResolvedValue(undefined);
+  });
+
+  it("grava a foto de verdade no item da casa: fotos, versao e publicacaoPendente", async () => {
+    const casaId = await criarCasaDeTeste("casa-registro-sucesso");
+
+    const resposta = await registrarFotoViaHandler(casaId, {
+      ...REGISTRO_VALIDO,
+      chave: `midia/casas/${casaId}/01HRFOTO0000000000000001-a3f9c1.webp`,
+    });
+    expect(resposta.statusCode).toBe(201);
+    const foto = JSON.parse(resposta.body as string) as { largura: number; altura: number };
+    expect(foto).toMatchObject({ largura: 800, altura: 600 });
+
+    const item = await obterItemCasa(casaId);
+    expect(item?.fotos).toHaveLength(1);
+    expect(item?.versao).toBe(1); // nasceu em 0 (criação), registrar incrementa
+    expect(item?.publicacaoPendente).toBe(true);
+  });
+
+  it("RN7: a segunda foto marcada principal desmarca a primeira, persistido de verdade", async () => {
+    const casaId = await criarCasaDeTeste("casa-registro-principal");
+
+    await registrarFotoViaHandler(casaId, {
+      ...REGISTRO_VALIDO,
+      chave: `midia/casas/${casaId}/foto-1.webp`,
+      principal: true,
+    });
+    await registrarFotoViaHandler(casaId, {
+      ...REGISTRO_VALIDO,
+      chave: `midia/casas/${casaId}/foto-2.webp`,
+      principal: true,
+    });
+
+    const item = await obterItemCasa(casaId);
+    expect(item?.fotos).toHaveLength(2);
+    expect(item?.fotos.filter((foto) => foto.principal)).toHaveLength(1);
+    expect(item?.fotos[1]?.principal).toBe(true);
+  });
+
+  it("a ordem da foto seguinte soma 10 à maior ordem existente (RN15)", async () => {
+    const casaId = await criarCasaDeTeste("casa-registro-ordem");
+
+    await registrarFotoViaHandler(casaId, {
+      ...REGISTRO_VALIDO,
+      chave: `midia/casas/${casaId}/foto-1.webp`,
+    });
+    await registrarFotoViaHandler(casaId, {
+      ...REGISTRO_VALIDO,
+      chave: `midia/casas/${casaId}/foto-2.webp`,
+    });
+
+    const item = await obterItemCasa(casaId);
+    expect(item?.fotos.map((foto) => foto.ordem)).toEqual([10, 20]);
+  });
+
+  it("RN11: recusa chave de outra casa, sem gravar nada", async () => {
+    const casaId = await criarCasaDeTeste("casa-registro-chave-errada");
+
+    const resposta = await registrarFotoViaHandler(casaId, {
+      ...REGISTRO_VALIDO,
+      chave: "midia/casas/outra-casa-qualquer/foto.webp",
+    });
+
+    expect(resposta.statusCode).toBe(400);
+    const item = await obterItemCasa(casaId);
+    expect(item?.fotos).toHaveLength(0);
+  });
+
+  it("E5: magic number não corresponde ao Content-Type → 400 ARQUIVO_INVALIDO, apaga o objeto, nada gravado", async () => {
+    const casaId = await criarCasaDeTeste("casa-registro-invalido");
+    lerInicioObjeto.mockResolvedValue(Buffer.from("<!DOCTYPE html>", "utf8"));
+
+    const resposta = await registrarFotoViaHandler(casaId, {
+      ...REGISTRO_VALIDO,
+      chave: `midia/casas/${casaId}/foto-maliciosa.webp`,
+    });
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ARQUIVO_INVALIDO" });
+    expect(apagarObjeto).toHaveBeenCalledWith(`midia/casas/${casaId}/foto-maliciosa.webp`);
+    const item = await obterItemCasa(casaId);
+    expect(item?.fotos).toHaveLength(0);
+  });
+
+  it("responde 404 quando a casa não existe", async () => {
+    const resposta = await registrarFotoViaHandler("01HQNAOEXISTE00000000000", {
+      ...REGISTRO_VALIDO,
+      chave: "midia/casas/01HQNAOEXISTE00000000000/foto.webp",
+    });
+    expect(resposta.statusCode).toBe(404);
+  });
+
+  it("concorrência real: duas chamadas quando a 40ª vaga está disputada — 1 sucesso, 1 422 LIMITE_FOTOS", async () => {
+    const casaId = await criarCasaDeTeste("casa-registro-concorrencia");
+
+    const { documentoDb } = await import("../../src/lib/db");
+    const { UpdateCommand } = await import("@aws-sdk/lib-dynamodb");
+    const trintaENoveFotos = Array.from({ length: 39 }, (_v, indice) => ({
+      fotoId: `01HQ${String(indice).padStart(22, "0")}`,
+      chave: `midia/casas/${casaId}/foto-${indice}.webp`,
+      largura: 800,
+      altura: 600,
+      bytes: 100_000,
+      legenda: "",
+      textoAlternativo: "Foto de teste",
+      ordem: (indice + 1) * 10,
+      principal: indice === 0,
+      enviadaEm: "2026-10-17T12:00:00-03:00",
+    }));
+    await documentoDb.send(
+      new UpdateCommand({
+        TableName: TABELA,
+        Key: { PK: `CASA#${casaId}`, SK: "META" },
+        UpdateExpression: "SET fotos = :fotos",
+        ExpressionAttributeValues: { ":fotos": trintaENoveFotos },
+      }),
+    );
+
+    const [a, b] = await Promise.all([
+      registrarFotoViaHandler(casaId, { ...REGISTRO_VALIDO, chave: `midia/casas/${casaId}/disputa-a.webp` }),
+      registrarFotoViaHandler(casaId, { ...REGISTRO_VALIDO, chave: `midia/casas/${casaId}/disputa-b.webp` }),
+    ]);
+
+    const statusCodes = [a.statusCode, b.statusCode].sort();
+    expect(statusCodes).toEqual([201, 422]);
+    const respostaComErro = a.statusCode === 422 ? a : b;
+    expect(JSON.parse(respostaComErro.body as string)).toMatchObject({ erro: "LIMITE_FOTOS" });
+
+    const item = await obterItemCasa(casaId);
+    expect(item?.fotos).toHaveLength(40); // nunca passa de 40, mesmo sob corrida
   });
 });

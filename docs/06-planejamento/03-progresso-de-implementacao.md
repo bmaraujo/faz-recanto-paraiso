@@ -44,18 +44,20 @@ projeto). Sem isso, a única forma de saber "o que já existe" é reler código 
 | 22 | 2026-10-17 | 1 | UC-A03 | `infra/` ganha `stack-frontend` — só o bucket S3 (RN10/RN11 de UC-A03), sem CloudFront/ACM/domínio ainda; nome do bucket não fixado (unicidade global, diferente da tabela) | `efbe4f0` |
 | 23 | 2026-10-19 | 1 | UC-A03 | `infra/` ganha `stack-backend` — Lambdas `api-publica`/`api-admin` (`lib/constructs/lambda-node.ts`, `lambda.Function` + asset do `esbuild` já existente, não `NodejsFunction`), Function URLs `NONE`, IAM de menor privilégio real (sem `dynamodb:Scan`; S3 restrito a `midia/casas/*`) | `bd483cf` |
 | 24 | 2026-10-20 | 1 | UC-A03 | `POST /api/admin/casas/{casaId}/fotos/upload` — primeira rota de UC-A03; `lib/s3.ts` nasce (`criarPresignedPostFoto`); `construirChaveFoto`/`TIPOS_FOTO_ACEITOS`/`LIMITE_FOTOS_POR_CASA` em `dominio/casas.ts`; `fotoUploadSchema` em `schemas/casa.ts`; `stack-backend` ganha o env `BUCKET` na `api-admin` | `44bc66d` |
-| 25 | 2026-10-20 | 1 | UC-A03 | Correção: `contentType` fora da allowlist (RN2, ex. SVG) agora responde `422 TIPO_NAO_SUPORTADO`, como o contrato técnico pede — a entrega 24 respondia `400 ENTRADA_INVALIDA`, porque a checagem estava dentro do `z.enum()` do zod em vez de ser regra de negócio no handler | _pendente_ |
+| 25 | 2026-10-20 | 1 | UC-A03 | Correção: `contentType` fora da allowlist (RN2, ex. SVG) agora responde `422 TIPO_NAO_SUPORTADO`, como o contrato técnico pede — a entrega 24 respondia `400 ENTRADA_INVALIDA`, porque a checagem estava dentro do `z.enum()` do zod em vez de ser regra de negócio no handler | `e0f3751` |
+| 26 | 2026-10-20 | 1 | UC-A03 | `POST /api/admin/casas/{casaId}/fotos` — registro com verificação real (RN13 magic number, RN14 dimensões via `image-size`); `domain/fotos.ts` nasce (pura, zero mock); `lib/s3.ts` ganha `obterMetadadosObjeto`/`lerInicioObjeto`/`apagarObjeto`; `lib/db.ts#registrarFoto` fecha a corrida do limite de 40 fotos com `size(fotos) < :limite` na própria condição da escrita (RN1); `registrarFotoSchema` em `schemas/casa.ts` | _pendente_ |
 
 **Estado em `main` agora:** `b6177b0` (merge do PR #17, `POST .../fotos/upload`).
-A entrega 25 está em branch própria, ainda não mergeada. **Nenhum `cdk deploy`
-foi executado ainda** — só `cdk synth`/`cdk diff` (somente leitura) contra a
-conta real `627010764306`.
+As entregas 25 e 26 estão em branches próprias, empilhadas (26 nasce de cima
+de 25), ainda não mergeadas. **Nenhum `cdk deploy` foi executado ainda** — só
+`cdk synth`/`cdk diff` (somente leitura) contra a conta real
+`627010764306`; esta entrega não toca `infra/`.
 
 ---
 
 ## O que existe hoje, por pacote
 
-### `packages/shared/` — 222 testes, 100% de cobertura em `dominio/`
+### `packages/shared/` — 227 testes, 100% de cobertura em `dominio/`
 
 | Módulo | Conteúdo |
 |---|---|
@@ -65,29 +67,30 @@ conta real `627010764306`.
 | `dominio/casas.ts` + `comodidades.ts` | Slug, URL de mapa permitida, completude para ativar, `ehEdicaoDeSlugPermitida` (RN4) — parte pura de UC-A02; tipo `Casa` completo (`Foto`, `Cama`, `Localizacao`, `Distancia`, `StatusCasa`/`ESTADOS_CASA`) — a forma do item `CASA#<id>/META` persistido; `TIPOS_FOTO_ACEITOS`/`LIMITE_FOTOS_POR_CASA`/`TAMANHO_MAX_FOTO_BYTES`/`construirChaveFoto` (RN1–RN3/RN10/RN11 de UC-A03) |
 | `dominio/formato.ts` | `formatarMoeda`, `formatarValorPorNoite` |
 | `dominio/configGeral.ts` | Tipo `ConfigGeral` (forma do item completo) e `projetarConfigGeralPublica` — allowlist de RN14 (UC-A13). **Só forma**: a validação de escrita (RN1–RN16) nasce com a Fase 2 |
-| `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa (`casaEntradaSchema`/`casaEdicaoSchema`/`casaArmazenadaSchema`, esta validando o item já persistido; `fotoUploadSchema`, UC-A03) — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`) |
+| `schemas/*.ts` | zod: forma de preço, cotação, disponibilidade e Casa (`casaEntradaSchema`/`casaEdicaoSchema`/`casaArmazenadaSchema`, esta validando o item já persistido; `fotoUploadSchema`/`registrarFotoSchema`, UC-A03) — validação de **forma**, nunca de regra de negócio (essa fica em `dominio/`/no handler) |
 
 **Ainda não construído:** telefone (E.164) e mascaramento de e-mail — propositalmente
 adiado para a Fase 2, quando UC-A13/UC-P04/UC-P05 precisarem deles de verdade.
 
-### `backend/` — 82 testes de unidade + 34 de integração (DynamoDB Local)
+### `backend/` — 111 testes de unidade + 41 de integração (DynamoDB Local)
 
 | Módulo | Conteúdo |
 |---|---|
 | `handlers/api-publica.ts` | `GET /api/saude`, `GET /api/casas/{id}/disponibilidade`, `POST /api/cotacao`, `GET /api/config-publica` |
-| `handlers/api-admin.ts` | CRUD completo de casas (UC-A02): `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}`, `POST .../{casaId}/status`; `POST .../{casaId}/fotos/upload` (UC-A03, só o presigned POST) — `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
-| `domain/` | Reexporta de `@recanto/shared` (`datas.ts`, `disponibilidade.ts`, `precos.ts` incl. `validarConfigPrecos`, `configGeral.ts`, `casas.ts` incl. `avaliarCompletudeParaAtivar`) — nunca duplica lógica |
-| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterCasa`/`listarCasas`/`atualizarCasa`/`alterarStatusCasa`/`excluirCasa`/`existeOcupacaoFutura` (UC-A02, valida forma com `casaArmazenadaSchema`), `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3) |
-| `lib/s3.ts` | Cliente S3 (singleton de módulo), `criarPresignedPostFoto` (UC-A03) — `createPresignedPost` assina a policy localmente, sem chamada de rede; coberto só por teste de integração, mesma convenção de `lib/db.ts` |
+| `handlers/api-admin.ts` | CRUD completo de casas (UC-A02): `POST`/`PUT`/`GET`/`DELETE /api/admin/casas{,/{casaId}}`, `POST .../{casaId}/status`; `POST .../{casaId}/fotos/upload` e `POST .../{casaId}/fotos` (UC-A03, presigned POST + registro) — `exigirAdmin` é chamado antes de qualquer roteamento (RN8) |
+| `domain/casas.ts`, `domain/precos.ts`, `domain/datas.ts` | Reexportam de `@recanto/shared` — nunca duplicam lógica |
+| `domain/fotos.ts` | **Não** é reexport (UC-A03 é só do backend): `detectarTipoPorMagicNumber` (RN13) e `extrairDimensoes` (RN14, via `image-size`) — puras, testadas com buffers reais, zero mock |
+| `lib/db.ts` | Cliente DynamoDB (singleton de módulo), builders de chave, `obterStatusCasa`, `obterCasa`/`listarCasas`/`atualizarCasa`/`alterarStatusCasa`/`excluirCasa`/`existeOcupacaoFutura` (UC-A02, valida forma com `casaArmazenadaSchema`), `obterConfigPrecos` (valida forma com `configPrecosSchema`), `obterConfigGeral` (item completo, com padrão por campo), `consultarOcupacoes` (paginada), `criarCasa` (`TransactWriteItems` com unicidade de slug, RN3), `registrarFoto` (UC-A03: `size(fotos) < :limite` na condição da escrita fecha a corrida do limite de 40, RN1) |
+| `lib/s3.ts` | Cliente S3 (singleton de módulo): `criarPresignedPostFoto`, `obterMetadadosObjeto` (`HeadObject`), `lerInicioObjeto` (`GetObject` com `Range`, 64 KiB), `apagarObjeto` (UC-A03) — coberto só por teste de integração, mesma convenção de `lib/db.ts` |
 | `lib/config.ts`, `lib/http.ts` | Leitura de ambiente (`STAGE`/`VERSAO`), envelope de resposta/erro do contrato, `decodificarCorpo` (compartilhado por toda rota que recebe JSON) |
 | `lib/auth.ts` (`exigirAdmin`, `criarVerificadorAdmin`) + `lib/erros.ts` (`ErroHttp`) | Verificação do JWT do Cognito (UC-A01) — `aws-jwt-verify`. Consumida por `handlers/api-admin.ts` |
 | `test/integracao/` | `disponibilidade.test.ts`, `cotacao.test.ts`, `config-publica.test.ts`, `admin-casas.test.ts`, `admin-fotos.test.ts` — DynamoDB Local via Docker Compose, cada arquivo com seu próprio nome de tabela (`TABELA`) para rodar em paralelo sem colidir |
 
 **Ainda não construído:** `lib/ses.ts`, `lib/ssm.ts`, `lib/ical.ts`,
 `lib/log.ts`; as rotas `GET /api/casas`, `GET /api/casas/{slug}`; as outras
-quatro rotas de UC-A03 (registro com magic number, ordem, edição, exclusão de
-foto); `cron-diario.ts`, `cron-ical.ts`, `publicar-conteudo.ts`; `templates/`.
-UC-A02 (CRUD de casas) está completo.
+três rotas de UC-A03 (ordem, edição, exclusão de foto); `cron-diario.ts`,
+`cron-ical.ts`, `publicar-conteudo.ts`; `templates/`. UC-A02 (CRUD de casas)
+está completo.
 
 ### `infra/` — 48 testes (`aws-cdk-lib/assertions`), nada deployado ainda
 
@@ -438,6 +441,52 @@ perderem — se um dia pesarem o suficiente, promovem-se a ADR.
     negócio) — exatamente a mistura de camada que o cabeçalho de
     `schemas/comum.ts` já avisa para não fazer. A checagem contra
     `TIPOS_FOTO_ACEITOS` move para o handler, depois da validação de forma.
+45. **`domain/fotos.ts` usa a biblioteca `image-size` para extrair
+    largura/altura (RN14), em vez de reimplementar à mão o desempacotamento
+    de bits do WebP (três codificações de dimensão diferentes — VP8, VP8L,
+    VP8X) e o scanner de marcadores do JPEG.** `image-size` tem zero
+    dependências, só lê metadados do cabeçalho (nunca decodifica pixel, nem
+    precisa do arquivo inteiro) — não é o mesmo tipo de custo/risco de
+    adicionar `sharp` (que o ADR e o documento de imagens já rejeitaram por
+    custo de Lambda e complexidade de build nativo). A verificação de magic
+    number (RN13) continua à mão, como o próprio contrato técnico já
+    especifica em código.
+46. **`lib/s3.ts#lerInicioObjeto` lê 64 KiB, não os 32 bytes do exemplo do
+    contrato técnico.** 32 bytes bastam para o magic number (RN13), mas não
+    para extrair dimensões (RN14) de um JPEG real: seus marcadores podem
+    incluir segmentos EXIF antes do `SOF0`/`SOF1`/`SOF2`, e o contrato nunca
+    detalha quantos bytes a extração de dimensões precisa (só fala do magic
+    number). 64 KiB cobre PNG e WebP com folga enorme (cabeçalho nos
+    primeiros 24-30 bytes) e cobre o caso real de JPEG. Se mesmo assim
+    faltar (um JPEG patológico com mais de 64 KiB de segmentos antes do
+    `SOF`), a extração falha e o registro é recusado como
+    `ARQUIVO_INVALIDO` — falha fechada, nunca um segundo `GetObject` maior.
+47. **RN1 (máximo de 40 fotos) é verificada duas vezes, com propósitos
+    diferentes** — mesmo padrão já usado para o upload (decisão não
+    numerada, ver `criarUploadFotoHandler`): uma checagem de UX no handler,
+    contra a casa já lida (falha antes de gastar `HeadObject`/`GetObject`),
+    e a autoritativa, uma condição `size(fotos) < :limite` na própria
+    escrita de `lib/db.ts#registrarFoto`. Só a segunda fecha a corrida de
+    verdade — duas chamadas concorrentes que leem 39 fotos cada uma passam
+    pela checagem de UX das duas, mas só uma consegue escrever (a outra
+    recebe `ConditionalCheckFailedException`, e um `GetItem` extra no
+    caminho de erro decide se o motivo foi o limite ou um conflito de
+    versão). Testado sob concorrência real contra o DynamoDB Local, não só
+    com `await` em sequência — mesma exigência de
+    docs/03-tecnico/14-estrategia-de-testes.md já aplicada à unicidade de
+    slug em `criarCasa`.
+48. **A chave da foto no corpo do registro é verificada contra o prefixo
+    `midia/casas/<casaId>/` antes de qualquer chamada ao S3.** Sem isso, o
+    admin de uma casa poderia registrar a foto já enviada de **outra** casa
+    (ambas sob a mesma Lambda/IAM) — um problema de integridade de dados,
+    não de permissão entre contas. `chave` é só forma em
+    `registrarFotoSchema`, porque o prefixo depende do `casaId` da própria
+    URL, que o schema não conhece.
+49. **`identidade.sub` de quem registrou a foto não é persistido na própria
+    `Foto`** (o tipo não tem um campo `criadoPor` — só `Casa` tem
+    `atualizadoPor`). `registrarFoto` grava `atualizadoPor` no **item da
+    casa**, mesmo padrão de `alterarStatusCasa`; quem registrou cada foto
+    individualmente não é rastreado hoje.
 
 ---
 
@@ -457,12 +506,13 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   frontend parte de um desenho que já não é o decidido.
 - **UC-A02 (CRUD de casas) está completo.** Criação, edição, ativação,
   leitura e exclusão prontas (entregas 17-21).
-- **UC-A03 (fotos): a primeira rota está pronta — `POST .../fotos/upload`
-  (entrega 24), sobre a infra das entregas 22-23.** Faltam as outras quatro:
-  `POST .../fotos` de registro (com `HeadObject` + verificação de magic
-  number — a próxima, decisão 39), `PUT .../fotos/ordem`, `PUT
-  .../fotos/{fotoId}`, `DELETE .../fotos/{fotoId}`. Nenhum `cdk deploy` foi
-  feito — as quatro stacks existem só em `synth`/`diff`.
+- **UC-A03 (fotos): upload e registro prontos** (`POST .../fotos/upload`,
+  entrega 24; `POST .../fotos`, entrega 26), sobre a infra das entregas
+  22-23. Faltam as outras três: `PUT .../fotos/ordem`, `PUT
+  .../fotos/{fotoId}` (edição de legenda/texto alternativo/principal — sem
+  upload novo), `DELETE .../fotos/{fotoId}` (apaga do item e do S3, via
+  `lib/s3.ts#apagarObjeto`, já existente). Nenhum `cdk deploy` foi feito — as
+  quatro stacks existem só em `synth`/`diff`.
 
 ### Resolvidas nesta entrega
 
@@ -535,6 +585,14 @@ Nada bloqueando — apenas decisões que valem uma segunda cabeça antes de cont
   allowlist, quando o contrato pede `422 TIPO_NAO_SUPORTADO`~~ — corrigido
   (entrega 25, decisão 44): a checagem de RN2 saiu do `z.enum()` do zod e
   virou regra de negócio no handler, contra `TIPOS_FOTO_ACEITOS`.
+- ~~UC-A03 tinha o upload, mas nenhuma forma de registrar a foto de
+  verdade~~ — `POST .../fotos` construído (entrega 26): `HeadObject` +
+  magic number (RN13) + extração de dimensões via `image-size` (RN14,
+  decisão 45), tudo em `domain/fotos.ts`, puro e testado com buffers reais
+  (zero mock, zero S3). RN1 (limite de 40) agora é autoritativa na própria
+  condição da escrita (`size(fotos) < :limite`, decisão 47), testada sob
+  concorrência real — fecha a mesma classe de corrida que a unicidade de
+  slug em `criarCasa` já evitava.
 
 ## Comandos de referência
 

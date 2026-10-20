@@ -1,10 +1,12 @@
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
-import type { Casa, ConfigPrecos, StatusCasa } from "@recanto/shared";
+import type { Casa, ConfigPrecos, Foto, StatusCasa } from "@recanto/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Identidade } from "../../../src/lib/auth";
 import { ErroHttp } from "../../../src/lib/erros";
+import type { MetadadosObjeto } from "../../../src/lib/s3";
 import { criarEvento } from "../../evento-teste";
+import { construirJpeg, construirPng, construirWebp } from "../../fixtures-imagem";
 
 const {
   exigirAdmin,
@@ -17,7 +19,11 @@ const {
   listarCasas,
   excluirCasa,
   existeOcupacaoFutura,
+  registrarFoto,
   criarPresignedPostFoto,
+  obterMetadadosObjeto,
+  lerInicioObjeto,
+  apagarObjeto,
 } = vi.hoisted(() => ({
   exigirAdmin: vi.fn<(evento: APIGatewayProxyEventV2, verificador: unknown) => Promise<Identidade>>(),
   criarVerificadorAdmin: vi.fn(() => ({})),
@@ -30,7 +36,20 @@ const {
   listarCasas: vi.fn<() => Promise<Casa[]>>(),
   excluirCasa: vi.fn<(casa: Pick<Casa, "casaId" | "slug">) => Promise<void>>(),
   existeOcupacaoFutura: vi.fn<(casaId: string, deInclusive: string) => Promise<boolean>>(),
+  registrarFoto:
+    vi.fn<
+      (
+        casaId: string,
+        novasFotos: Foto[],
+        versaoAnterior: number,
+        agora: string,
+        atualizadoPor: string,
+      ) => Promise<void>
+    >(),
   criarPresignedPostFoto: vi.fn<(chave: string, contentType: string, agora: Date) => Promise<unknown>>(),
+  obterMetadadosObjeto: vi.fn<(chave: string) => Promise<MetadadosObjeto | undefined>>(),
+  lerInicioObjeto: vi.fn<(chave: string) => Promise<Buffer>>(),
+  apagarObjeto: vi.fn<(chave: string) => Promise<void>>(),
 }));
 
 vi.mock("../../../src/lib/auth", () => ({ exigirAdmin, criarVerificadorAdmin }));
@@ -43,8 +62,14 @@ vi.mock("../../../src/lib/db", () => ({
   alterarStatusCasa,
   excluirCasa,
   existeOcupacaoFutura,
+  registrarFoto,
 }));
-vi.mock("../../../src/lib/s3", () => ({ criarPresignedPostFoto }));
+vi.mock("../../../src/lib/s3", () => ({
+  criarPresignedPostFoto,
+  obterMetadadosObjeto,
+  lerInicioObjeto,
+  apagarObjeto,
+}));
 
 import { handler } from "../../../src/handlers/api-admin";
 
@@ -155,7 +180,22 @@ function eventoUploadFoto(casaId: string, corpo: unknown): APIGatewayProxyEventV
   });
 }
 
+function eventoRegistrarFoto(casaId: string, corpo: unknown): APIGatewayProxyEventV2 {
+  return criarEvento("POST", `/api/admin/casas/${casaId}/fotos`, {
+    headers: { authorization: "Bearer token-de-teste" },
+    body: typeof corpo === "string" ? corpo : JSON.stringify(corpo),
+  });
+}
+
 const UPLOAD_VALIDO = { contentType: "image/webp", nomeOriginal: "fachada.jpg", bytes: 184_320 };
+
+const CHAVE_VALIDA = `midia/casas/${CASA_ID}/01HRFOTO0000000000000001-a3f9c1.webp`;
+
+const REGISTRO_VALIDO = {
+  chave: CHAVE_VALIDA,
+  textoAlternativo: "Casa de madeira com varanda, vista do lago ao fundo",
+  legenda: "Fachada vista do lago",
+};
 
 const PRESIGNED_RESULTADO = {
   chave: "midia/casas/01HQCASAEXISTENTE00000001/01HRFOTO-a3f9c1.webp",
@@ -163,6 +203,8 @@ const PRESIGNED_RESULTADO = {
   campos: { key: "midia/casas/.../x.webp", "Content-Type": "image/webp" },
   expiraEm: "2026-10-11T18:09:00-03:00",
 };
+
+const METADADOS_WEBP_VALIDOS: MetadadosObjeto = { bytes: 184_320, contentType: "image/webp" };
 
 beforeEach(() => {
   exigirAdmin.mockReset();
@@ -174,7 +216,11 @@ beforeEach(() => {
   listarCasas.mockReset();
   excluirCasa.mockReset();
   existeOcupacaoFutura.mockReset();
+  registrarFoto.mockReset();
   criarPresignedPostFoto.mockReset();
+  obterMetadadosObjeto.mockReset();
+  lerInicioObjeto.mockReset();
+  apagarObjeto.mockReset();
   exigirAdmin.mockResolvedValue(ADMIN);
   criarCasa.mockResolvedValue(undefined);
   obterCasa.mockResolvedValue(CASA_EXISTENTE);
@@ -184,7 +230,11 @@ beforeEach(() => {
   listarCasas.mockResolvedValue([]);
   excluirCasa.mockResolvedValue(undefined);
   existeOcupacaoFutura.mockResolvedValue(false);
+  registrarFoto.mockResolvedValue(undefined);
   criarPresignedPostFoto.mockResolvedValue(PRESIGNED_RESULTADO);
+  obterMetadadosObjeto.mockResolvedValue(METADADOS_WEBP_VALIDOS);
+  lerInicioObjeto.mockResolvedValue(construirWebp(1600, 1067));
+  apagarObjeto.mockResolvedValue(undefined);
 });
 
 describe("autenticação (RN8)", () => {
@@ -639,5 +689,203 @@ describe("POST /api/admin/casas/{casaId}/fotos/upload (UC-A03)", () => {
     );
 
     expect(resposta.statusCode).toBe(400);
+  });
+});
+
+describe("POST /api/admin/casas/{casaId}/fotos (UC-A03, registro)", () => {
+  it("registra a foto e responde 201 com largura/altura extraídas de verdade (RN14)", async () => {
+    obterMetadadosObjeto.mockResolvedValue({ bytes: 200_000, contentType: "image/webp" });
+    lerInicioObjeto.mockResolvedValue(construirWebp(800, 600));
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(201);
+    const foto = JSON.parse(resposta.body as string) as Foto;
+    expect(foto).toMatchObject({
+      chave: CHAVE_VALIDA,
+      largura: 800,
+      altura: 600,
+      bytes: 200_000,
+      legenda: REGISTRO_VALIDO.legenda,
+      textoAlternativo: REGISTRO_VALIDO.textoAlternativo,
+      principal: false,
+      ordem: 10,
+    });
+    expect(registrarFoto).toHaveBeenCalledWith(
+      CASA_ID,
+      [foto],
+      CASA_EXISTENTE.versao,
+      expect.any(String),
+      ADMIN.sub,
+    );
+  });
+
+  it("também registra JPEG e PNG, não só WebP (a validação não é hardcoded para um formato)", async () => {
+    obterMetadadosObjeto.mockResolvedValue({ bytes: 150_000, contentType: "image/jpeg" });
+    lerInicioObjeto.mockResolvedValue(construirJpeg(4000, 3000));
+
+    const respostaJpeg = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+    expect(respostaJpeg.statusCode).toBe(201);
+    expect(JSON.parse(respostaJpeg.body as string)).toMatchObject({ largura: 4000, altura: 3000 });
+
+    obterMetadadosObjeto.mockResolvedValue({ bytes: 90_000, contentType: "image/png" });
+    lerInicioObjeto.mockResolvedValue(construirPng(640, 480));
+
+    const respostaPng = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+    expect(respostaPng.statusCode).toBe(201);
+    expect(JSON.parse(respostaPng.body as string)).toMatchObject({ largura: 640, altura: 480 });
+  });
+
+  const FOTO_EXISTENTE = CASA_COMPLETA_PARA_ATIVAR.fotos[0] as Foto;
+
+  it("primeira foto da casa recebe ordem 10; a próxima soma 10 à maior ordem existente", async () => {
+    obterCasa.mockResolvedValue({
+      ...CASA_EXISTENTE,
+      fotos: [{ ...FOTO_EXISTENTE, ordem: 30 }],
+    });
+
+    await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    const [, novasFotos] = registrarFoto.mock.calls[0] as [string, Foto[], number, string, string];
+    expect(novasFotos[novasFotos.length - 1]?.ordem).toBe(40);
+  });
+
+  it("RN7: marcar a nova foto como principal desmarca as demais na mesma escrita", async () => {
+    obterCasa.mockResolvedValue({
+      ...CASA_EXISTENTE,
+      fotos: [{ ...FOTO_EXISTENTE, principal: true }],
+    });
+
+    await handler(eventoRegistrarFoto(CASA_ID, { ...REGISTRO_VALIDO, principal: true }));
+
+    const [, novasFotos] = registrarFoto.mock.calls[0] as [string, Foto[], number, string, string];
+    expect(novasFotos[0]?.principal).toBe(false); // a que já existia
+    expect(novasFotos[1]?.principal).toBe(true); // a nova
+  });
+
+  it("responde 404 quando a casa não existe", async () => {
+    obterCasa.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(404);
+    expect(obterMetadadosObjeto).not.toHaveBeenCalled();
+  });
+
+  it("RN1: responde 422 LIMITE_FOTOS antes de qualquer chamada ao S3 (UX)", async () => {
+    const fotoBase = CASA_COMPLETA_PARA_ATIVAR.fotos[0] as (typeof CASA_COMPLETA_PARA_ATIVAR.fotos)[number];
+    const fotosNoLimite = Array.from({ length: 40 }, (_v, indice) => ({
+      ...fotoBase,
+      fotoId: `01HQ${String(indice).padStart(22, "0")}`,
+    }));
+    obterCasa.mockResolvedValue({ ...CASA_EXISTENTE, fotos: fotosNoLimite });
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "LIMITE_FOTOS" });
+    expect(obterMetadadosObjeto).not.toHaveBeenCalled();
+  });
+
+  it("RN11: responde 400 quando a chave não pertence ao prefixo desta casa", async () => {
+    const resposta = await handler(
+      eventoRegistrarFoto(CASA_ID, { ...REGISTRO_VALIDO, chave: "midia/casas/OUTRA-CASA/x.webp" }),
+    );
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(obterMetadadosObjeto).not.toHaveBeenCalled();
+  });
+
+  it("5. responde 400 quando a chave não corresponde a nenhum arquivo enviado", async () => {
+    obterMetadadosObjeto.mockResolvedValue(undefined);
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(lerInicioObjeto).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o objeto excede o teto de tamanho (RN3, defensivo)", async () => {
+    obterMetadadosObjeto.mockResolvedValue({ bytes: 10_000_000, contentType: "image/webp" });
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(lerInicioObjeto).not.toHaveBeenCalled();
+  });
+
+  it("RN2: responde 422 TIPO_NAO_SUPORTADO quando o Content-Type armazenado não está na allowlist", async () => {
+    obterMetadadosObjeto.mockResolvedValue({ bytes: 100_000, contentType: "image/svg+xml" });
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(422);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "TIPO_NAO_SUPORTADO" });
+    expect(lerInicioObjeto).not.toHaveBeenCalled();
+  });
+
+  it("6/E5: HTML com Content-Type: image/webp (magic number não casa) → 400 ARQUIVO_INVALIDO e apaga o objeto", async () => {
+    lerInicioObjeto.mockResolvedValue(Buffer.from("<!DOCTYPE html>", "utf8"));
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ARQUIVO_INVALIDO" });
+    expect(apagarObjeto).toHaveBeenCalledWith(CHAVE_VALIDA);
+    expect(registrarFoto).not.toHaveBeenCalled();
+  });
+
+  it("400 ARQUIVO_INVALIDO quando a magic number bate mas as dimensões não podem ser extraídas", async () => {
+    // Primeiros 3 bytes de JPEG válido, mas truncado antes do SOF.
+    lerInicioObjeto.mockResolvedValue(Buffer.from([0xff, 0xd8, 0xff]));
+    obterMetadadosObjeto.mockResolvedValue({ bytes: 100_000, contentType: "image/jpeg" });
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ARQUIVO_INVALIDO" });
+    expect(apagarObjeto).toHaveBeenCalledWith(CHAVE_VALIDA);
+  });
+
+  it("não falha a resposta quando apagarObjeto rejeita (best-effort, E5/E10)", async () => {
+    lerInicioObjeto.mockResolvedValue(Buffer.from("não é imagem", "utf8"));
+    apagarObjeto.mockRejectedValue(new Error("S3 indisponível"));
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ARQUIVO_INVALIDO" });
+  });
+
+  it("RN5: responde 400 quando falta textoAlternativo", async () => {
+    const { textoAlternativo: _t, ...semTexto } = REGISTRO_VALIDO;
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, semTexto));
+
+    expect(resposta.statusCode).toBe(400);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "ENTRADA_INVALIDA" });
+    expect(obterCasa).not.toHaveBeenCalled();
+  });
+
+  it("responde 400 quando o corpo está ausente", async () => {
+    const resposta = await handler(
+      criarEvento("POST", `/api/admin/casas/${CASA_ID}/fotos`, {
+        headers: { authorization: "Bearer token-de-teste" },
+      }),
+    );
+
+    expect(resposta.statusCode).toBe(400);
+  });
+
+  it("responde 409 CONFLITO_VERSAO quando registrarFoto rejeita por concorrência", async () => {
+    registrarFoto.mockRejectedValue(
+      new ErroHttp(409, "CONFLITO_VERSAO", "Esta casa foi alterada em outra aba."),
+    );
+
+    const resposta = await handler(eventoRegistrarFoto(CASA_ID, REGISTRO_VALIDO));
+
+    expect(resposta.statusCode).toBe(409);
+    expect(JSON.parse(resposta.body as string)).toMatchObject({ erro: "CONFLITO_VERSAO" });
   });
 });

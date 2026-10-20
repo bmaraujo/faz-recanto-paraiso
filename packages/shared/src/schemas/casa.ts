@@ -132,8 +132,27 @@ export const fotoUploadSchema = z.object({
 
 export type FotoUpload = z.infer<typeof fotoUploadSchema>;
 
-/** Uma foto embutida no item da casa (UC-A03, ainda não implementado — este
- * schema existe só para `casaArmazenadaSchema` validar o que já estiver lá). */
+/**
+ * `POST /api/admin/casas/{casaId}/fotos` (UC-A03): registra uma foto já
+ * enviada ao S3 pelo presigned POST do upload.
+ *
+ * `chave` é só forma aqui — o prefixo `midia/casas/<casaId>/` (RN11) depende
+ * do `casaId` da URL, então o handler verifica, não este schema. RN5:
+ * `textoAlternativo` é obrigatório (acessibilidade e SEO); RN6: `legenda` é
+ * opcional; `principal` default `false` quando ausente.
+ */
+export const registrarFotoSchema = z.object({
+  chave: z.string().min(1).max(500),
+  textoAlternativo: z.string().min(1).max(300),
+  legenda: z.string().max(300).optional(),
+  principal: z.boolean().optional(),
+});
+
+export type RegistrarFoto = z.infer<typeof registrarFotoSchema>;
+
+/** Uma foto embutida no item da casa — este schema existe para
+ * `casaArmazenadaSchema` validar o que já estiver persistido e para o
+ * handler de registro validar a foto que ele mesmo acabou de montar. */
 export const fotoSchema = z.object({
   fotoId: ulidSchema,
   chave: z.string().min(1),

@@ -19,6 +19,7 @@
     "@aws-sdk/s3-presigned-post": "^3.1153.0",
     "@recanto/shared": "*",
     "aws-jwt-verify": "^5.2.1",
+    "image-size": "^2.0.4",
     "ulid": "^3.0.2"
   },
   "devDependencies": {
