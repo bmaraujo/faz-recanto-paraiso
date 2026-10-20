@@ -9,6 +9,7 @@ import {
   consultaDisponibilidadeSchema,
   dataISOSchema,
   entradaCotacaoPublicaSchema,
+  fotoUploadSchema,
   periodoPrecoSchema,
   ulidSchema,
 } from "../src/index";
@@ -526,5 +527,39 @@ describe("casaArmazenadaSchema", () => {
       fotos: [{ fotoId: "não-é-ulid", chave: "x", principal: true }],
     };
     expect(casaArmazenadaSchema.safeParse(comFotoInvalida).success).toBe(false);
+  });
+});
+
+describe("fotoUploadSchema (UC-A03)", () => {
+  const UPLOAD_VALIDO = { contentType: "image/webp", nomeOriginal: "fachada.jpg", bytes: 184_320 };
+
+  it("aceita o corpo do contrato técnico", () => {
+    expect(fotoUploadSchema.safeParse(UPLOAD_VALIDO).success).toBe(true);
+  });
+
+  it("aceita os três formatos de RN2", () => {
+    for (const contentType of ["image/webp", "image/jpeg", "image/png"]) {
+      expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, contentType }).success).toBe(true);
+    }
+  });
+
+  it("RN2: rejeita SVG — não está no enum de formatos aceitos", () => {
+    expect(
+      fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, contentType: "image/svg+xml" }).success,
+    ).toBe(false);
+  });
+
+  it("rejeita bytes zero ou negativo", () => {
+    expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, bytes: 0 }).success).toBe(false);
+    expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, bytes: -1 }).success).toBe(false);
+  });
+
+  it("não impõe o teto de 3 MB de RN3 — é informativo; a policy do S3 é que aplica", () => {
+    // Ver o comentário do próprio schema: bytes aqui não é a aplicação da regra.
+    expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, bytes: 20_000_000 }).success).toBe(true);
+  });
+
+  it("rejeita nomeOriginal vazio", () => {
+    expect(fotoUploadSchema.safeParse({ ...UPLOAD_VALIDO, nomeOriginal: "" }).success).toBe(false);
   });
 });

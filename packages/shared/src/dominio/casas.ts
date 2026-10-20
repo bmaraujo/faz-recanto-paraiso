@@ -54,6 +54,47 @@ export interface Localizacao {
   distancias?: Distancia[];
 }
 
+/** RN2 (UC-A03): formatos aceitos para fotos de casa. SVG nunca é aceito — é
+ * XML que pode conter `<script>` (armadilha nº 7 do UC-A03). */
+export const TIPOS_FOTO_ACEITOS = ["image/webp", "image/jpeg", "image/png"] as const;
+export type TipoFotoAceito = (typeof TIPOS_FOTO_ACEITOS)[number];
+
+/** RN1 (UC-A03): no máximo 40 fotos por casa. */
+export const LIMITE_FOTOS_POR_CASA = 40;
+
+/** RN3 (UC-A03): tamanho máximo de uma foto após o redimensionamento no
+ * navegador — imposto pela condição `content-length-range` da policy do S3,
+ * não por uma validação da Lambda (ver `backend/src/lib/s3.ts`). */
+export const TAMANHO_MAX_FOTO_BYTES = 3 * 1024 * 1024;
+
+const EXTENSAO_POR_TIPO_FOTO: Record<TipoFotoAceito, string> = {
+  "image/webp": "webp",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+};
+
+/**
+ * RN11: a chave de uma foto fica sempre sob `midia/casas/<casaId>/`. RN10: o
+ * sufixo aleatório (gerado por quem chama — `node:crypto`, fora deste módulo
+ * puro) torna a chave imprevisível e nunca reaproveitada, o que permite ao
+ * CloudFront cachear a imagem como imutável por 1 ano.
+ *
+ * Sem o segmento de "slug da legenda" que
+ * docs/03-tecnico/07-armazenamento-de-imagens.md ilustra: a legenda só é
+ * conhecida no registro da foto (`POST .../fotos`, passo 6 do fluxo
+ * principal), depois que o arquivo já foi enviado para esta mesma chave
+ * (passo 5) — não há como incluir no nome algo que ainda não existe no
+ * momento em que a chave nasce, no presigned POST (passo 4).
+ */
+export function construirChaveFoto(
+  casaId: string,
+  fotoId: string,
+  contentType: TipoFotoAceito,
+  sufixoAleatorio: string,
+): string {
+  return `midia/casas/${casaId}/${fotoId}-${sufixoAleatorio}.${EXTENSAO_POR_TIPO_FOTO[contentType]}`;
+}
+
 /** Uma foto embutida no item da casa (docs/03-tecnico/02-modelo-de-dados.md,
  * seção "Fotos"). `principal` é exclusiva: no máximo uma foto por casa a tem. */
 export interface Foto {

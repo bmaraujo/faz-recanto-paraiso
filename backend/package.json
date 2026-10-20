@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1149.0",
+    "@aws-sdk/client-s3": "^3.1153.0",
     "@aws-sdk/lib-dynamodb": "^3.1149.0",
+    "@aws-sdk/s3-presigned-post": "^3.1153.0",
     "@recanto/shared": "*",
     "aws-jwt-verify": "^5.2.1",
     "ulid": "^3.0.2"

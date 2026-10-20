@@ -11,7 +11,9 @@
  * - `PUT /api/admin/casas/{casaId}` — UC-A02
  * - `POST /api/admin/casas/{casaId}/status` — UC-A02
  * - `GET /api/admin/casas`, `GET /api/admin/casas/{casaId}` — UC-A02
- * - `DELETE /api/admin/casas/{casaId}` — UC-A02 (esta entrega, fecha o CRUD)
+ * - `DELETE /api/admin/casas/{casaId}` — UC-A02 (fecha o CRUD)
+ * - `POST /api/admin/casas/{casaId}/fotos/upload` — UC-A03 (esta entrega, só
+ *   o presigned POST; registro/ordem/edição/exclusão de foto ainda não têm rota)
  * - (demais rotas de outros UCs de backoffice: a seguir)
  */
 
@@ -21,9 +23,12 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "
 import { ulid } from "ulid";
 
 import {
+  LIMITE_FOTOS_POR_CASA,
   alterarStatusCasaSchema,
   casaEdicaoSchema,
   casaEntradaSchema,
+  construirChaveFoto,
+  fotoUploadSchema,
   type Casa,
 } from "@recanto/shared";
 
@@ -43,9 +48,11 @@ import {
 } from "../lib/db";
 import { ErroHttp } from "../lib/erros";
 import { decodificarCorpo, respostaErro, respostaJson } from "../lib/http";
+import { criarPresignedPostFoto } from "../lib/s3";
 
 const ROTA_CASA_POR_ID = /^\/api\/admin\/casas\/([^/]+)$/;
 const ROTA_STATUS_CASA = /^\/api\/admin\/casas\/([^/]+)\/status$/;
+const ROTA_UPLOAD_FOTO = /^\/api\/admin\/casas\/([^/]+)\/fotos\/upload$/;
 
 /** Mesma ordem de grandeza dos campos de texto de `casaEntradaSchema`
  * (`descricao`, `regras`, `comoChegar`, 10.000 chars cada) mais a margem dos
@@ -89,6 +96,12 @@ export async function handler(
     if (statusMatch !== null) {
       const casaId = statusMatch[1] as string;
       return await alterarStatusCasaHandler(evento, casaId, identidade);
+    }
+
+    const uploadMatch = metodo === "POST" ? ROTA_UPLOAD_FOTO.exec(caminho) : null;
+    if (uploadMatch !== null) {
+      const casaId = uploadMatch[1] as string;
+      return await criarUploadFotoHandler(evento, casaId);
     }
 
     const casaMatch =
@@ -301,6 +314,52 @@ async function alterarStatusCasaHandler(
     atualizadoEm: agora,
     atualizadoPor: identidade.sub,
   });
+}
+
+/**
+ * `POST /api/admin/casas/{casaId}/fotos/upload` (UC-A03): devolve o presigned
+ * POST que autoriza o navegador a enviar o arquivo direto ao S3
+ * (`lib/s3.ts#criarPresignedPostFoto`), sem passar por esta Lambda.
+ *
+ * RN1: recusa a 41ª foto aqui, antes de gerar qualquer presigned — gerar uma
+ * policy válida para um upload que o registro (`POST .../fotos`, ainda não
+ * implementado) teria que recusar de qualquer forma seria dar ao navegador
+ * uma falsa confirmação.
+ */
+async function criarUploadFotoHandler(
+  evento: APIGatewayProxyEventV2,
+  casaId: string,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const corpo = lerCorpoJson(evento);
+  if ("resposta" in corpo) return corpo.resposta;
+
+  const entrada = fotoUploadSchema.safeParse(corpo.dados);
+  if (!entrada.success) {
+    return respostaErro(400, "ENTRADA_INVALIDA", "Dados do upload inválidos.", {
+      campos: entrada.error.issues.map((problema) => problema.path.join(".")),
+    });
+  }
+
+  const casa = await obterCasa(casaId);
+  if (casa === undefined) {
+    return respostaErro(404, "NAO_ENCONTRADO", "Casa não encontrada.");
+  }
+
+  if (casa.fotos.length >= LIMITE_FOTOS_POR_CASA) {
+    return respostaErro(
+      422,
+      "LIMITE_FOTOS",
+      `Limite de ${LIMITE_FOTOS_POR_CASA} fotos por casa atingido.`,
+    );
+  }
+
+  const fotoId = ulid();
+  const sufixoAleatorio = randomBytes(3).toString("hex");
+  const chave = construirChaveFoto(casaId, fotoId, entrada.data.contentType, sufixoAleatorio);
+
+  const presigned = await criarPresignedPostFoto(chave, entrada.data.contentType, new Date());
+
+  return respostaJson(200, presigned);
 }
 
 /**

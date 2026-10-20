@@ -3,6 +3,22 @@
 exports[`stage dev > stack auth 1`] = `
 {
   "Outputs": {
+    "ExportsOutputRefUserPool6BA7E5F296FD7236": {
+      "Export": {
+        "Name": "TesteAuthdev:ExportsOutputRefUserPool6BA7E5F296FD7236",
+      },
+      "Value": {
+        "Ref": "UserPool6BA7E5F2",
+      },
+    },
+    "ExportsOutputRefUserPoolAppClientDD0407EC2B1026B9": {
+      "Export": {
+        "Name": "TesteAuthdev:ExportsOutputRefUserPoolAppClientDD0407EC2B1026B9",
+      },
+      "Value": {
+        "Ref": "UserPoolAppClientDD0407EC",
+      },
+    },
     "UserPoolClientId": {
       "Value": {
         "Ref": "UserPoolAppClientDD0407EC",
@@ -123,6 +139,27 @@ exports[`stage dev > stack auth 1`] = `
 
 exports[`stage dev > stack dados 1`] = `
 {
+  "Outputs": {
+    "ExportsOutputFnGetAttTabelaD554685EArnBEF6E3CB": {
+      "Export": {
+        "Name": "TesteDadosdev:ExportsOutputFnGetAttTabelaD554685EArnBEF6E3CB",
+      },
+      "Value": {
+        "Fn::GetAtt": [
+          "TabelaD554685E",
+          "Arn",
+        ],
+      },
+    },
+    "ExportsOutputRefTabelaD554685ED53465FB": {
+      "Export": {
+        "Name": "TesteDadosdev:ExportsOutputRefTabelaD554685ED53465FB",
+      },
+      "Value": {
+        "Ref": "TabelaD554685E",
+      },
+    },
+  },
   "Parameters": {},
   "Resources": {
     "ParametroSiteUrl9C18BAB0": {
@@ -206,6 +243,25 @@ exports[`stage dev > stack dados 1`] = `
 exports[`stage dev > stack frontend 1`] = `
 {
   "Outputs": {
+    "ExportsOutputFnGetAttBucket83908E77Arn063C8555": {
+      "Export": {
+        "Name": "TesteFrontenddev:ExportsOutputFnGetAttBucket83908E77Arn063C8555",
+      },
+      "Value": {
+        "Fn::GetAtt": [
+          "Bucket83908E77",
+          "Arn",
+        ],
+      },
+    },
+    "ExportsOutputRefBucket83908E7781C90AC0": {
+      "Export": {
+        "Name": "TesteFrontenddev:ExportsOutputRefBucket83908E7781C90AC0",
+      },
+      "Value": {
+        "Ref": "Bucket83908E77",
+      },
+    },
     "NomeDoBucket": {
       "Value": {
         "Ref": "Bucket83908E77",
@@ -420,6 +476,22 @@ exports[`stage dev > stack frontend 1`] = `
 exports[`stage prod > stack auth 1`] = `
 {
   "Outputs": {
+    "ExportsOutputRefUserPool6BA7E5F296FD7236": {
+      "Export": {
+        "Name": "TesteAuthprod:ExportsOutputRefUserPool6BA7E5F296FD7236",
+      },
+      "Value": {
+        "Ref": "UserPool6BA7E5F2",
+      },
+    },
+    "ExportsOutputRefUserPoolAppClientDD0407EC2B1026B9": {
+      "Export": {
+        "Name": "TesteAuthprod:ExportsOutputRefUserPoolAppClientDD0407EC2B1026B9",
+      },
+      "Value": {
+        "Ref": "UserPoolAppClientDD0407EC",
+      },
+    },
     "UserPoolClientId": {
       "Value": {
         "Ref": "UserPoolAppClientDD0407EC",
@@ -540,6 +612,27 @@ exports[`stage prod > stack auth 1`] = `
 
 exports[`stage prod > stack dados 1`] = `
 {
+  "Outputs": {
+    "ExportsOutputFnGetAttTabelaD554685EArnBEF6E3CB": {
+      "Export": {
+        "Name": "TesteDadosprod:ExportsOutputFnGetAttTabelaD554685EArnBEF6E3CB",
+      },
+      "Value": {
+        "Fn::GetAtt": [
+          "TabelaD554685E",
+          "Arn",
+        ],
+      },
+    },
+    "ExportsOutputRefTabelaD554685ED53465FB": {
+      "Export": {
+        "Name": "TesteDadosprod:ExportsOutputRefTabelaD554685ED53465FB",
+      },
+      "Value": {
+        "Ref": "TabelaD554685E",
+      },
+    },
+  },
   "Parameters": {},
   "Resources": {
     "ParametroSiteUrl9C18BAB0": {
@@ -623,6 +716,25 @@ exports[`stage prod > stack dados 1`] = `
 exports[`stage prod > stack frontend 1`] = `
 {
   "Outputs": {
+    "ExportsOutputFnGetAttBucket83908E77Arn063C8555": {
+      "Export": {
+        "Name": "TesteFrontendprod:ExportsOutputFnGetAttBucket83908E77Arn063C8555",
+      },
+      "Value": {
+        "Fn::GetAtt": [
+          "Bucket83908E77",
+          "Arn",
+        ],
+      },
+    },
+    "ExportsOutputRefBucket83908E7781C90AC0": {
+      "Export": {
+        "Name": "TesteFrontendprod:ExportsOutputRefBucket83908E7781C90AC0",
+      },
+      "Value": {
+        "Ref": "Bucket83908E77",
+      },
+    },
     "NomeDoBucket": {
       "Value": {
         "Ref": "Bucket83908E77",

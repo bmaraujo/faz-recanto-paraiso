@@ -47,14 +47,20 @@ npm test                                       # testes de infraestrutura
 | `stack-dados` (tabela, GSI1, TTL, SSM `site-url`) | ✅ |
 | `stack-auth` (User Pool, App Client PKCE, domínio, grupo `admin` — UC-A01) | ✅ |
 | `stack-frontend` — só o bucket S3 (UC-A03), sem nome fixado (único globalmente) | ✅ |
+| `stack-backend` — Lambdas `api-publica`/`api-admin`, Function URL `NONE`, IAM por ação explícita (sem `dynamodb:Scan`; S3 restrito a `midia/casas/*`); env `BUCKET` só na `api-admin` (UC-A03) | ✅ |
+| `constructs/lambda-node.ts` (`lambda.Function` + bundle do `backend/esbuild.config.mjs`, não `NodejsFunction`) | ✅ |
 | `config/dev.ts`, `config/prod.ts` | ✅ |
-| `test/custo.test.ts`, `test/retencao.test.ts`, `test/seguranca.test.ts`, `test/snapshot.test.ts` | ✅ 35 testes, cobrindo as três stacks acima |
+| `test/custo.test.ts`, `test/retencao.test.ts`, `test/seguranca.test.ts`, `test/snapshot.test.ts` | ✅ 48 testes, cobrindo as quatro stacks acima |
 | `test/cache.test.ts` | ⬜ — nasce com a `Distribution` do CloudFront (ainda não construída) |
-| `stack-backend` | ⬜ — próxima entrega: Lambdas `api-publica`/`api-admin`, Function URLs, IAM de menor privilégio |
+| `cron-diario`/`cron-ical`/`publicar-conteudo` em `stack-backend` | ⬜ — nenhum handler escrito ainda |
 | Resto de `stack-frontend` (CloudFront, ACM, Route 53, CloudFront Function, OAC) | ⬜ — depende da pendência de domínio (8.1) |
 | `stack-observabilidade` | ⬜ |
-| `constructs/lambda-node.ts`, `constructs/parametro-seguro.ts` | ⬜ — nascem com `stack-backend` |
-| **`cdk deploy` de verdade** | ⬜ — só `synth`/`diff` (somente leitura) rodaram até agora, contra a conta real `627010764306` |
+| `constructs/parametro-seguro.ts` | ⬜ |
+| **`cdk deploy` de verdade** | ⬜ — só `synth`/`diff` (somente leitura) rodaram até agora, contra a conta real `627010764306`, para as quatro stacks |
+
+**Pré-requisito de `stack-backend`:** `npm run build -w backend` precisa ter
+rodado antes de `cdk synth`/`deploy` — a Lambda empacota `backend/dist/handlers`
+(bundle do esbuild), não recompila nada.
 
 `siteUrl` em `config/dev.ts` aponta para `http://localhost:4321` (callback do Cognito):
 a distribuição CloudFront ainda não existe para dar um domínio real de `dev`. Trocar

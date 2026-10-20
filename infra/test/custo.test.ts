@@ -19,17 +19,36 @@ const TIPOS_PROIBIDOS = [
 ];
 
 describe.each(["dev", "prod"] as const)("stage %s", (stage) => {
-  const { dados, auth, frontend } = sintetizar(stage);
+  const { dados, auth, frontend, backend } = sintetizar(stage);
 
   it.each(TIPOS_PROIBIDOS)("não contém %s em nenhuma stack construída", (tipo) => {
     Template.fromStack(dados).resourceCountIs(tipo, 0);
     Template.fromStack(auth).resourceCountIs(tipo, 0);
     Template.fromStack(frontend).resourceCountIs(tipo, 0);
+    Template.fromStack(backend).resourceCountIs(tipo, 0);
   });
 
   it("DynamoDB é PAY_PER_REQUEST (nunca provisionado)", () => {
     Template.fromStack(dados).hasResourceProperties("AWS::DynamoDB::Table", {
       BillingMode: "PAY_PER_REQUEST",
+    });
+  });
+
+  it("as Lambdas têm concorrência reservada (teto de custo contra tráfego anormal)", () => {
+    const template = Template.fromStack(backend);
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "api-publica.handler",
+      ReservedConcurrentExecutions: 5,
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "api-admin.handler",
+      ReservedConcurrentExecutions: 2,
+    });
+  });
+
+  it("as Lambdas usam arm64 (Graviton, ~20% mais barato)", () => {
+    Template.fromStack(backend).hasResourceProperties("AWS::Lambda::Function", {
+      Architectures: ["arm64"],
     });
   });
 });

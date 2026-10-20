@@ -23,7 +23,13 @@
 import { z } from "zod";
 
 import { comodidadeSchema } from "../comodidades";
-import { ESTADOS_CASA, SLUG_REGEX, ehUrlDeMapaPermitida, tipoCamaSchema } from "../dominio/casas";
+import {
+  ESTADOS_CASA,
+  SLUG_REGEX,
+  TIPOS_FOTO_ACEITOS,
+  ehUrlDeMapaPermitida,
+  tipoCamaSchema,
+} from "../dominio/casas";
 import { ulidSchema } from "./comum";
 
 export const statusCasaSchema = z.enum(ESTADOS_CASA);
@@ -110,6 +116,20 @@ export type CasaEdicao = z.infer<typeof casaEdicaoSchema>;
 
 /** `POST /api/admin/casas/{casaId}/status`: valida RN7 no handler, não aqui. */
 export const alterarStatusCasaSchema = z.object({ status: statusCasaSchema });
+
+/**
+ * `POST /api/admin/casas/{casaId}/fotos/upload` (UC-A03): o corpo que pede o
+ * presigned POST. `bytes` é só informativo — o tamanho real após o
+ * redimensionamento no navegador; o teto de 3 MB (RN3) é imposto pela
+ * condição `content-length-range` da policy do S3, não validado aqui.
+ */
+export const fotoUploadSchema = z.object({
+  contentType: z.enum(TIPOS_FOTO_ACEITOS),
+  nomeOriginal: z.string().min(1).max(255),
+  bytes: z.number().int().positive(),
+});
+
+export type FotoUpload = z.infer<typeof fotoUploadSchema>;
 
 /** Uma foto embutida no item da casa (UC-A03, ainda não implementado — este
  * schema existe só para `casaArmazenadaSchema` validar o que já estiver lá). */

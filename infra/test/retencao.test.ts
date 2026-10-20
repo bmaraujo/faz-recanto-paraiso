@@ -62,3 +62,16 @@ describe("bucket em prod", () => {
     });
   });
 });
+
+describe("log groups das Lambdas", () => {
+  it("retêm 7 dias em dev e 14 em prod (config/dev.ts e config/prod.ts)", () => {
+    Template.fromStack(sintetizar("dev").backend).hasResourceProperties(
+      "AWS::Logs::LogGroup",
+      { RetentionInDays: 7 },
+    );
+    Template.fromStack(sintetizar("prod").backend).hasResourceProperties(
+      "AWS::Logs::LogGroup",
+      { RetentionInDays: 14 },
+    );
+  });
+});
